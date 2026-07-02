@@ -9,7 +9,7 @@
 
 ## セットアップ
 
-通常は親 workspace から実行します。
+親 workspace から依存関係を入れます。
 
 ```bash
 cd /Users/kanta/dev/active/lab-microbit
@@ -19,7 +19,7 @@ make setup
 ローカル MakeCode と editor UI を起動します。
 
 ```bash
-make dev-open
+make dev
 ```
 
 ブラウザで開いた MakeCode の「拡張機能」に次を貼ります。
@@ -28,15 +28,8 @@ make dev-open
 https://github.com/k4nkan/microbit-edit-logger
 ```
 
-手動で起動する場合は、親 workspace から次を使います。
-
-```bash
-make editor
-make makecode
-```
-
 `EADDRINUSE` が出た場合は、古い server を止めます。
 
 ```bash
-make stop-ports
+make stop
 ```

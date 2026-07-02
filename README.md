@@ -31,11 +31,23 @@ make setup
 ローカル MakeCode と editor UI を起動します。
 
 ```bash
-make dev-open
+make dev
 ```
 
 ブラウザで開いた MakeCode の「拡張機能」に次を貼ります。
 
 ```text
 https://github.com/k4nkan/microbit-edit-logger
+```
+
+ビルド確認だけ行う場合は、次を実行します。
+
+```bash
+make build
+```
+
+port 競合時は、次でローカル server を止めます。
+
+```bash
+make stop
 ```
