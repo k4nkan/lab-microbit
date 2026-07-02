@@ -1,8 +1,13 @@
 .DS_Store
 *.log
 
+tools/logs
+
 microbit-edit-logger-local/node_modules/
 microbit-edit-logger-local/.pxt/
 microbit-edit-logger-local/built/
 microbit-edit-logger-local/hexcache/
 microbit-edit-logger-local/projects/
+
+__pycache__/
+.venv/
