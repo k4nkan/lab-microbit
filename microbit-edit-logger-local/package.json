@@ -1,0 +1,16 @@
+{
+  "name": "microbit-edit-logger-local",
+  "private": true,
+  "scripts": {
+    "init:target": "node scripts/init-pxt-target.js",
+    "patch:target": "node scripts/patch-editor-extension-urls.js",
+    "patch:editor": "node scripts/patch-editor-extension-html.js",
+    "serve": "npm run init:target && npm run patch:target && npm run patch:editor && pxt serve --noBrowser --just"
+  },
+  "dependencies": {
+    "pxt-microbit": "^8.1.20"
+  },
+  "devDependencies": {
+    "pxt": "0.5.1"
+  }
+}

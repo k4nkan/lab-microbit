@@ -1,0 +1,3 @@
+[submodule "microbit-edit-logger"]
+	path = microbit-edit-logger
+	url = https://github.com/k4nkan/microbit-edit-logger.git
