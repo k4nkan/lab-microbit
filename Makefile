@@ -3,16 +3,28 @@ SHELL := /bin/bash
 ROOT_DIR := $(CURDIR)
 EXT_DIR := $(ROOT_DIR)/microbit-edit-logger
 LOCAL_DIR := $(ROOT_DIR)/microbit-edit-logger-local
+RESEARCH_SITE_DIR := $(ROOT_DIR)/microbit-research-website
 
 MAKECODE_PORT := 3232
 MAKECODE_WSPORT := 3233
 EDITOR_PORT := 8080
 
-.PHONY: setup dev build stop
+.PHONY: setup dev experiment build stop
 
 setup:
 	cd "$(EXT_DIR)" && npm install
 	cd "$(LOCAL_DIR)" && npm install
+	$(MAKE) -C "$(RESEARCH_SITE_DIR)" setup
+
+experiment:
+	@set -euo pipefail; \
+		echo "Starting MakeCode, Edit Logger, problem site, and API..."; \
+		$(MAKE) dev & \
+		makecode_pid=$$!; \
+		$(MAKE) -C "$(RESEARCH_SITE_DIR)" dev & \
+		research_site_pid=$$!; \
+		trap 'kill $$makecode_pid $$research_site_pid 2>/dev/null || true; wait $$makecode_pid $$research_site_pid 2>/dev/null || true' EXIT INT TERM; \
+		wait
 
 dev:
 	@set -euo pipefail; \

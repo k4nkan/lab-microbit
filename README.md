@@ -34,6 +34,14 @@ make setup
 make dev
 ```
 
+MakeCode、Edit Logger、問題サイト、APIをまとめて起動する場合は、次を実行します。
+
+```bash
+make experiment
+```
+
+MakeCodeと問題サイトは、準備ができるとそれぞれブラウザで自動的に開きます。すべて停止する場合は `Ctrl+C` を押します。
+
 ブラウザで開いた MakeCode の「拡張機能」に次を貼ります。
 
 ```text
