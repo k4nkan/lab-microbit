@@ -85,6 +85,13 @@ def init_db() -> None:
             db.execute("ALTER TABLE live_logger_events ADD COLUMN experiment_session_id TEXT")
         if "connection_id" not in columns:
             db.execute("ALTER TABLE live_logger_events ADD COLUMN connection_id TEXT")
+        db.execute(
+            """CREATE INDEX IF NOT EXISTS idx_live_logger_events_experiment_time
+            ON live_logger_events(experiment_session_id, event_timestamp)"""
+        )
+        session_columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
+        if "export_name" not in session_columns:
+            db.execute("ALTER TABLE sessions ADD COLUMN export_name TEXT")
 
 
 @contextmanager

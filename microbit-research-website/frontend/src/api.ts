@@ -4,7 +4,7 @@ export const MAKECODE_URL = import.meta.env.VITE_MAKECODE_URL || "http://localho
 const QUEUE_KEY = "microbit-research:event-queue";
 const LOCAL_EVENTS_KEY = "microbit-research:local-events";
 
-export type SessionState = { sessionId: string; participantId: string; startedAt: string; screen: string; stepIndex: number; counts: Record<string, number>; offline?: boolean; taskStartedAt?: string; stepStartedAt?: string; freeStartedAt?: string; freeIdea?: string; freeSummary?: string; freeStatus?: string };
+export type SessionState = { sessionId: string; participantId: string; startedAt: string; screen: string; stepIndex: number; counts: Record<string, number>; offline?: boolean; taskStartedAt?: string; stepStartedAt?: string; freeStartedAt?: string; freeIdea?: string; freeSummary?: string; freeStatus?: string; exportDir?: string };
 export type LogEvent = { event_id: string; participant_id: string; session_id: string; task_id: string | null; step_id: string | null; event_type: string; client_timestamp: string; elapsed_ms: number; task_version: string; metadata: Record<string, unknown> };
 export const api = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -46,6 +46,7 @@ export const saveLocalEvent = (event: LogEvent) => {
   events.push(event);
   localStorage.setItem(LOCAL_EVENTS_KEY, JSON.stringify(events));
 };
+export const saveSnapshot = (sessionId: string) => api<{ export_dir: string; saved_at: string }>(`/api/sessions/${sessionId}/snapshot`, { method: "POST" });
 export const downloadLocalEvents = (sessionId: string) => {
   const events: LogEvent[] = JSON.parse(localStorage.getItem(LOCAL_EVENTS_KEY) || "[]");
   const content = JSON.stringify(events.filter((event) => event.session_id === sessionId), null, 2);

@@ -3,8 +3,11 @@ import hashlib
 import io
 import json
 import os
+import re
+import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -15,21 +18,36 @@ from pydantic import BaseModel, Field, field_validator
 
 from .database import DATA_DIR, connect, decode_row, init_db
 
+EXPORT_DIR = DATA_DIR / "exports"
+SESSIONS_EXPORT_DIR = EXPORT_DIR / "sessions"
+UNASSIGNED_EXPORT_DIR = EXPORT_DIR / "unassigned"
+LOGGER_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+# The logger's own "stop" lands a few seconds after the problem site finishes.
+SESSION_END_GRACE = timedelta(seconds=60)
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def valid_iso(value: str) -> str:
+def parse_iso(value: str | None) -> datetime | None:
+    if not isinstance(value, str):
+        return None
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("ISO 8601形式の時刻を指定してください") from exc
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def valid_iso(value: str) -> str:
+    if parse_iso(value) is None:
+        raise ValueError("ISO 8601形式の時刻を指定してください")
     return value
 
 
 class SessionCreate(BaseModel):
-    participant_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    participant_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{0,40}$")
 
 
 class ProgressUpdate(BaseModel):
@@ -65,8 +83,7 @@ class LoggerImport(BaseModel):
 
 
 class LiveLoggerBatch(BaseModel):
-    events: list[dict[str, Any]] = Field(max_length=10000)
-    connection_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    events: list[dict[str, Any]] = Field(max_length=2000)
 
 
 @asynccontextmanager
@@ -87,12 +104,24 @@ def require_session(db, session_id: str):
     return row
 
 
-def find_active_session(db, connection_id: str):
+def current_session(db):
     return db.execute(
-        """SELECT session_id, participant_id, started_at FROM sessions
-        WHERE participant_id=? AND status='active' ORDER BY started_at DESC LIMIT 1""",
-        (connection_id,),
+        "SELECT * FROM sessions WHERE status='active' ORDER BY started_at DESC LIMIT 1"
     ).fetchone()
+
+
+def export_name_for(session) -> str:
+    if session["export_name"]:
+        return session["export_name"]
+    started = parse_iso(session["started_at"]) or datetime.now(timezone.utc)
+    return f"{started.astimezone():%Y%m%d-%H%M%S}_{session['participant_id']}"
+
+
+def session_export_dir(db, session) -> Path:
+    name = export_name_for(session)
+    if not session["export_name"]:
+        db.execute("UPDATE sessions SET export_name=? WHERE session_id=?", (name, session["session_id"]))
+    return SESSIONS_EXPORT_DIR / name
 
 
 def event_dict(row) -> dict[str, Any]:
@@ -101,31 +130,49 @@ def event_dict(row) -> dict[str, Any]:
     return item
 
 
-def write_json(path, data: Any) -> None:
+def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
 
 
-def export_problem_session(session_id: str) -> None:
-    with connect() as db:
-        rows = db.execute(
-            "SELECT * FROM problem_events WHERE session_id=? ORDER BY client_timestamp", (session_id,)
-        ).fetchall()
-    write_json(DATA_DIR / "exports" / "problem-site" / f"{session_id}.json", [event_dict(row) for row in rows])
+def append_jsonl(path: Path, items: list[Any]) -> None:
+    if not items:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        for item in items:
+            file.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 
-def export_live_logger_session(logger_session_id: str, connection_id: str | None = None) -> None:
+def session_summary(db, session) -> dict[str, Any]:
+    folder = session_export_dir(db, session)
+    return {
+        "session_id": session["session_id"],
+        "participant_id": session["participant_id"],
+        "started_at": session["started_at"],
+        "completed_at": session["completed_at"],
+        "status": session["status"],
+        "export_dir": str(folder.relative_to(DATA_DIR.parent)),
+    }
+
+
+def write_session_snapshot(session_id: str) -> Path:
+    """Write the complete, human-readable JSON files for one experiment session."""
     with connect() as db:
-        rows = db.execute(
-            "SELECT original_json FROM live_logger_events WHERE logger_session_id=? ORDER BY event_timestamp, rowid",
-            (logger_session_id,),
-        ).fetchall()
-    write_json(
-        DATA_DIR / "exports" / "makecode-logger" / (connection_id or "unlinked") / f"{logger_session_id}.json",
-        [json.loads(row["original_json"]) for row in rows],
-    )
+        session = require_session(db, session_id)
+        folder = session_export_dir(db, session)
+        problem, logger, merged = merged_events(db, session_id)
+        summary = session_summary(db, session)
+    summary["problem_event_count"] = len(problem)
+    summary["makecode_event_count"] = len(logger)
+    summary["snapshot_at"] = utc_now()
+    write_json(folder / "session.json", summary)
+    write_json(folder / "problem-events.json", problem)
+    write_json(folder / "makecode-events.json", [item["original"] for item in logger])
+    write_json(folder / "merged.json", merged)
+    return folder
 
 
 @app.get("/api/health")
@@ -133,21 +180,37 @@ def health():
     return {"status": "ok", "server_timestamp": utc_now()}
 
 
+@app.get("/api/experiment/current")
+def get_current_experiment():
+    """The single experiment currently running on this PC. The MakeCode logger polls this."""
+    with connect() as db:
+        session = current_session(db)
+        return {"session": session_summary(db, session) if session else None}
+
+
 @app.post("/api/sessions", status_code=201)
 def create_session(body: SessionCreate):
     now = utc_now()
     session_id = str(uuid4())
+    participant_id = body.participant_id or f"P-{secrets.token_hex(2).upper()}"
     with connect() as db:
-        db.execute("INSERT OR IGNORE INTO participants VALUES (?, ?)", (body.participant_id, now))
+        # One PC runs one experiment at a time; a new start closes any session left open.
+        abandoned = db.execute("SELECT session_id FROM sessions WHERE status='active'").fetchall()
+        db.execute("UPDATE sessions SET status='abandoned', completed_at=? WHERE status='active'", (now,))
+        db.execute("INSERT OR IGNORE INTO participants VALUES (?, ?)", (participant_id, now))
         db.execute(
             "INSERT INTO sessions(session_id, participant_id, started_at) VALUES (?, ?, ?)",
-            (session_id, body.participant_id, now),
+            (session_id, participant_id, now),
         )
         db.execute(
             "INSERT INTO session_progress(session_id, state_json, updated_at) VALUES (?, '{}', ?)",
             (session_id, now),
         )
-    return {"session_id": session_id, "participant_id": body.participant_id, "started_at": now, "status": "active"}
+        summary = session_summary(db, require_session(db, session_id))
+    for row in abandoned:
+        write_session_snapshot(row["session_id"])
+    write_session_snapshot(session_id)
+    return summary
 
 
 @app.get("/api/sessions/{session_id}")
@@ -172,30 +235,28 @@ def update_session(session_id: str, body: ProgressUpdate):
 def save_events(events: list[EventIn]) -> tuple[int, int]:
     saved = duplicate = 0
     now = utc_now()
-    session_ids: set[str] = set()
+    appended: dict[Path, list[dict[str, Any]]] = {}
     with connect() as db:
         sessions: dict[str, Any] = {}
         for event in events:
-            session_ids.add(event.session_id)
             session = sessions.get(event.session_id) or require_session(db, event.session_id)
             sessions[event.session_id] = session
             if session["participant_id"] != event.participant_id:
                 raise HTTPException(400, "参加者IDとセッションが一致しません")
-            cursor = db.execute(
-                """INSERT OR IGNORE INTO problem_events
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    str(event.event_id), event.participant_id, event.session_id, event.task_id,
-                    event.step_id, event.event_type, event.client_timestamp, now, event.elapsed_ms,
-                    event.task_version, json.dumps(event.metadata, ensure_ascii=False),
-                ),
+            row = (
+                str(event.event_id), event.participant_id, event.session_id, event.task_id,
+                event.step_id, event.event_type, event.client_timestamp, now, event.elapsed_ms,
+                event.task_version, json.dumps(event.metadata, ensure_ascii=False),
             )
+            cursor = db.execute("INSERT OR IGNORE INTO problem_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
             if cursor.rowcount:
                 saved += 1
+                path = session_export_dir(db, session) / "problem-events.jsonl"
+                appended.setdefault(path, []).append({**event.model_dump(mode="json"), "server_timestamp": now})
             else:
                 duplicate += 1
-    for session_id in session_ids:
-        export_problem_session(session_id)
+    for path, items in appended.items():
+        append_jsonl(path, items)
     return saved, duplicate
 
 
@@ -211,54 +272,60 @@ def create_event_batch(body: EventBatch):
     return {"saved": saved, "duplicate": duplicate}
 
 
+def logger_event_key(event: dict[str, Any], original_json: str) -> str:
+    event_id = event.get("eventId")
+    if isinstance(event_id, str) and 0 < len(event_id) <= 120:
+        return f"id:{event_id}"
+    return hashlib.sha256(original_json.encode("utf-8")).hexdigest()
+
+
+def session_window(row) -> tuple[Any, datetime | None, datetime | None]:
+    completed = parse_iso(row["completed_at"])
+    return row, parse_iso(row["started_at"]), completed + SESSION_END_GRACE if completed else None
+
+
 @app.post("/api/logger/events/batch")
 def save_live_logger_events(body: LiveLoggerBatch):
-    saved = duplicate = 0
-    logger_session_ids: set[str] = set()
-    experiment_session_id = None
+    """Store MakeCode logger events. Events are never rejected for linkage:
+    each one is attached to the experiment session whose time window contains it."""
+    saved = duplicate = skipped = 0
+    now = utc_now()
+    appended: dict[Path, list[dict[str, Any]]] = {}
     with connect() as db:
-        if body.connection_id:
-            linked_session = find_active_session(db, body.connection_id)
-            if not linked_session:
-                raise HTTPException(400, "接続IDに対応する実験セッションがありません")
-            experiment_session_id = linked_session["session_id"]
+        # Newest first, so a session started right after another one wins the overlap.
+        windows = [session_window(row) for row in db.execute("SELECT * FROM sessions ORDER BY started_at DESC")]
         for event in body.events:
             logger_session_id = event.get("sessionId")
-            if not isinstance(logger_session_id, str) or not logger_session_id or not logger_session_id.replace("-", "").replace("_", "").isalnum():
-                raise HTTPException(400, "有効なsessionIdを含むイベントを指定してください")
-            logger_session_ids.add(logger_session_id)
+            if not isinstance(logger_session_id, str) or not LOGGER_SESSION_ID.match(logger_session_id):
+                skipped += 1
+                continue
+            at = parse_iso(event.get("at"))
+            session = next(
+                (row for row, start, end in windows if at and start and start <= at and (end is None or at <= end)),
+                None,
+            )
             original_json = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            event_hash = hashlib.sha256(original_json.encode("utf-8")).hexdigest()
             cursor = db.execute(
                 """INSERT OR IGNORE INTO live_logger_events
                 (event_hash, logger_session_id, experiment_session_id, connection_id,
                  event_timestamp, event_type, received_at, original_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (event_hash, logger_session_id, experiment_session_id, body.connection_id,
-                 event.get("at"), event.get("type"), utc_now(), original_json),
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?)""",
+                (logger_event_key(event, original_json), logger_session_id,
+                 session["session_id"] if session else None, event.get("at"), event.get("type"), now, original_json),
             )
-            if cursor.rowcount:
-                saved += 1
-            else:
+            if not cursor.rowcount:
                 duplicate += 1
-                if experiment_session_id:
-                    db.execute(
-                        """UPDATE live_logger_events
-                        SET experiment_session_id=?, connection_id=? WHERE event_hash=?""",
-                        (experiment_session_id, body.connection_id, event_hash),
-                    )
-    for logger_session_id in logger_session_ids:
-        export_live_logger_session(logger_session_id, body.connection_id)
-    return {"saved": saved, "duplicate": duplicate, "experiment_session_id": experiment_session_id}
-
-
-@app.get("/api/logger/connections/{connection_id}")
-def get_logger_connection(connection_id: str):
-    with connect() as db:
-        session = find_active_session(db, connection_id)
-    if not session:
-        raise HTTPException(404, "接続IDに対応する実験セッションがありません")
-    return dict(session)
+                continue
+            saved += 1
+            path = (
+                session_export_dir(db, session) / "makecode-events.jsonl"
+                if session
+                else UNASSIGNED_EXPORT_DIR / f"makecode-{logger_session_id}.jsonl"
+            )
+            appended.setdefault(path, []).append(event)
+    for path, items in appended.items():
+        append_jsonl(path, items)
+    return {"saved": saved, "duplicate": duplicate, "skipped": skipped}
 
 
 @app.post("/api/sessions/{session_id}/finish")
@@ -266,8 +333,18 @@ def finish_session(session_id: str):
     with connect() as db:
         require_session(db, session_id)
         now = utc_now()
-        db.execute("UPDATE sessions SET completed_at=?, status='completed' WHERE session_id=?", (now, session_id))
-    return {"completed_at": now, "status": "completed"}
+        db.execute(
+            "UPDATE sessions SET completed_at=?, status='completed' WHERE session_id=? AND status='active'",
+            (now, session_id),
+        )
+    folder = write_session_snapshot(session_id)
+    return {"completed_at": now, "status": "completed", "export_dir": str(folder.relative_to(DATA_DIR.parent))}
+
+
+@app.post("/api/sessions/{session_id}/snapshot")
+def snapshot_session(session_id: str):
+    folder = write_session_snapshot(session_id)
+    return {"export_dir": str(folder.relative_to(DATA_DIR.parent)), "saved_at": utc_now()}
 
 
 @app.get("/api/admin/sessions")
@@ -276,12 +353,13 @@ def admin_sessions():
         rows = db.execute(
             """SELECT s.*, p.task_id, p.step_id,
             (SELECT COUNT(*) FROM problem_events e WHERE e.session_id=s.session_id) event_count,
+            (SELECT COUNT(*) FROM live_logger_events l WHERE l.experiment_session_id=s.session_id) logger_event_count,
             ((SELECT COUNT(*) FROM imported_logger_sessions i WHERE i.experiment_session_id=s.session_id) +
              (SELECT COUNT(DISTINCT l.logger_session_id) FROM live_logger_events l WHERE l.experiment_session_id=s.session_id)) logger_import_count
             FROM sessions s LEFT JOIN session_progress p ON p.session_id=s.session_id
             ORDER BY s.started_at DESC"""
         ).fetchall()
-    return [dict(row) for row in rows]
+        return [{**dict(row), "export_dir": session_summary(db, row)["export_dir"]} for row in rows]
 
 
 def merged_events(db, session_id: str):
@@ -295,7 +373,7 @@ def merged_events(db, session_id: str):
     ).fetchall()
     live_logger_rows = db.execute(
         """SELECT event_type, event_timestamp, original_json
-        FROM live_logger_events WHERE experiment_session_id=? ORDER BY event_timestamp""",
+        FROM live_logger_events WHERE experiment_session_id=? ORDER BY event_timestamp, rowid""",
         (session_id,),
     ).fetchall()
     session = require_session(db, session_id)
@@ -312,7 +390,7 @@ def merged_events(db, session_id: str):
          "event_type": item.get("event_type"), "original_event": item["original"]}
         for item in logger
     ]
-    merged.sort(key=lambda item: item["timestamp"] or "")
+    merged.sort(key=lambda item: parse_iso(item["timestamp"]) or datetime.min.replace(tzinfo=timezone.utc))
     return problem, logger, merged
 
 
@@ -362,6 +440,7 @@ def import_logger(body: LoggerImport):
                 VALUES (?, ?, ?, ?, ?)""",
                 (import_id, selected, item.get("type"), item.get("at"), json.dumps(item, ensure_ascii=False)),
             )
+    write_session_snapshot(body.experiment_session_id)
     return {"logger_session_id": selected, "event_count": len(events), "available_session_ids": logger_ids}
 
 
@@ -390,4 +469,3 @@ def export_logs(
     for item in data:
         writer.writerow({key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value for key, value in item.items()})
     return Response(output.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
