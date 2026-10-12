@@ -24,6 +24,10 @@ UNASSIGNED_EXPORT_DIR = EXPORT_DIR / "unassigned"
 LOGGER_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 # The logger's own "stop" lands a few seconds after the problem site finishes.
 SESSION_END_GRACE = timedelta(seconds=60)
+# The Edit Logger polls every 5 s; missing two polls means it is not open.
+LOGGER_STALE_AFTER = timedelta(seconds=12)
+# Single-PC setup: one Edit Logger reports here, kept in memory only.
+logger_status: dict[str, Any] = {"last_seen": None, "logging": False, "logger_session_id": None, "unsent": 0}
 
 
 def utc_now() -> str:
@@ -181,11 +185,32 @@ def health():
 
 
 @app.get("/api/experiment/current")
-def get_current_experiment():
-    """The single experiment currently running on this PC. The MakeCode logger polls this."""
+def get_current_experiment(
+    logging: bool | None = None, logger_session_id: str | None = None, unsent: int | None = None
+):
+    """The single experiment currently running on this PC. The MakeCode logger polls this
+    and reports its own state through the query parameters."""
+    if logging is not None:
+        logger_status.update(
+            last_seen=datetime.now(timezone.utc), logging=logging,
+            logger_session_id=logger_session_id or None, unsent=unsent or 0,
+        )
     with connect() as db:
         session = current_session(db)
         return {"session": session_summary(db, session) if session else None}
+
+
+@app.get("/api/logger/status")
+def get_logger_status():
+    last_seen = logger_status["last_seen"]
+    connected = bool(last_seen and datetime.now(timezone.utc) - last_seen < LOGGER_STALE_AFTER)
+    return {
+        "connected": connected,
+        "logging": connected and logger_status["logging"],
+        "unsent": logger_status["unsent"] if connected else 0,
+        "logger_session_id": logger_status["logger_session_id"],
+        "last_seen": last_seen.isoformat().replace("+00:00", "Z") if last_seen else None,
+    }
 
 
 @app.post("/api/sessions", status_code=201)

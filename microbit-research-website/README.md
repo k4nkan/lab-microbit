@@ -52,7 +52,7 @@ make frontend
 ## データの自動保存
 
 1. 学習者画面で参加者IDを入力して「開始」を押します（空欄なら `P-XXXX` を自動で付けます）。新しく開始すると、終わっていない前の実験は `abandoned` として閉じられます。
-2. MakeCodeでEdit Loggerを一度開きます。ロガーは `GET /api/experiment/current` で現在の実験を検出し、記録を自動で開始・停止します。IDの入力は不要です。
+2. MakeCodeでEdit Loggerを一度開きます。ロガーは `GET /api/experiment/current` で現在の実験を検出し、記録を自動で開始・停止します。IDの入力は不要です。ロガーはこの問い合わせで自分の状態も報告し、問題サイトのヘッダーに「MakeCode記録: 記録中 / 停止中 / 未接続」と表示されます。記録中でない間は警告が出て、T1は「完了して次へ」を押せません。
 3. 問題サイトのイベントとロガーのイベントは、受信するたびに実験フォルダの `*.jsonl` へ追記されます。
 4. 「ここまでのログを保存」または実験終了時に、整形済みの `session.json`・`problem-events.json`・`makecode-events.json`・`merged.json` を書き出します。
 
