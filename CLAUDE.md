@@ -31,7 +31,7 @@ micro:bit / MakeCode を使った学習実験の研究リポジトリ。実験�
 make setup        # 依存関係のインストール
 make experiment   # MakeCode・ロガー・問題サイト・API をまとめて起動
 make dataset      # 全実験のデータセットを作り直す
-make analysis     # explore.py を実行して図を analysis/out/ に保存
+make analysis     # explore.py を実行して図を tools/out/ に保存
 make build        # 拡張のビルド確認
 make stop         # port 競合時にローカル server を止める
 ```
