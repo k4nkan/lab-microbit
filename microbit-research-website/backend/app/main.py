@@ -316,6 +316,7 @@ def save_live_logger_events(body: LiveLoggerBatch):
     saved = duplicate = skipped = 0
     now = utc_now()
     appended: dict[Path, list[dict[str, Any]]] = {}
+    finished: set[str] = set()
     with connect() as db:
         # Newest first, so a session started right after another one wins the overlap.
         windows = [session_window(row) for row in db.execute("SELECT * FROM sessions ORDER BY started_at DESC")]
@@ -348,8 +349,14 @@ def save_live_logger_events(body: LiveLoggerBatch):
                 else UNASSIGNED_EXPORT_DIR / f"makecode-{logger_session_id}.jsonl"
             )
             appended.setdefault(path, []).append(event)
+            if session and session["status"] != "active":
+                finished.add(session["session_id"])
     for path, items in appended.items():
         append_jsonl(path, items)
+    # Events from the grace window after a finish (e.g. the logger's own stop)
+    # also belong in that session's formatted JSON files.
+    for session_id in finished:
+        write_session_snapshot(session_id)
     return {"saved": saved, "duplicate": duplicate, "skipped": skipped}
 
 
