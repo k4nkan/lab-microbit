@@ -11,3 +11,8 @@ microbit-edit-logger-local/projects/
 
 __pycache__/
 .venv/
+
+tools/out/
+
+# 研究ノート（Obsidian vault）。別の private リポジトリで管理する
+research/
