@@ -8,8 +8,11 @@ RESEARCH_SITE_DIR := $(ROOT_DIR)/microbit-research-website
 MAKECODE_PORT := 3232
 MAKECODE_WSPORT := 3233
 EDITOR_PORT := 8080
+API_PORT := 8000
+SITE_PORT := 5173
+ANALYSIS_PY := $(if $(wildcard $(ROOT_DIR)/tools/.venv/bin/python),$(ROOT_DIR)/tools/.venv/bin/python,python3)
 
-.PHONY: setup dev experiment build stop
+.PHONY: setup dev experiment build stop dataset analysis-setup analysis
 
 setup:
 	cd "$(EXT_DIR)" && npm install
@@ -51,10 +54,20 @@ build:
 	cd "$(EXT_DIR)" && npm run build
 
 stop:
-	@for port in $(MAKECODE_PORT) $(MAKECODE_WSPORT) $(EDITOR_PORT); do \
+	@for port in $(MAKECODE_PORT) $(MAKECODE_WSPORT) $(EDITOR_PORT) $(API_PORT) $(SITE_PORT); do \
 		pids=$$(lsof -tiTCP:$$port -sTCP:LISTEN || true); \
 		if [[ -n "$$pids" ]]; then \
 			echo "Killing port $$port: $$pids"; \
 			kill $$pids; \
 		fi; \
 	done
+
+dataset:
+	python3 tools/build-dataset.py --all
+
+analysis-setup:
+	python3 -m venv tools/.venv
+	tools/.venv/bin/pip install -r tools/requirements.txt
+
+analysis:
+	cd tools && MPLBACKEND=Agg $(ANALYSIS_PY) explore.py
