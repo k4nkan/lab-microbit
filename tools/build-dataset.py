@@ -132,6 +132,8 @@ class StepClock:
             at = parse_time(event["client_timestamp"])
             if event["event_type"] == "step_viewed" and event["step_id"]:
                 self._add(at, event["task_id"] or "", event["step_id"])
+            elif event["event_type"] == "task_intro_viewed":
+                self._add(at, event["task_id"] or "", "intro")
             elif event["event_type"] == "task_started" and event["task_id"] in ("arrange", "free-creation"):
                 self._add(at, "arrange", "arrange")
             elif event["event_type"] == "task_completed" and event["step_id"] == "G7":

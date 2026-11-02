@@ -1,22 +1,31 @@
-export type Step = { id: string; taskId: string; phase: string; taskTitle: string; estimate: string; title: string; body: string; criteria: string[]; hint: string; answer: string; image?: string; answerImage?: string };
+export type Step = { id: string; taskId: string; phase: string; taskTitle: string; estimate: string; title: string; body: string; criteria: string[]; hint: string; answer: string; image?: string; answerImages?: string[] };
+export type TaskIntro = { title: string; body: string; points: string[]; image?: string };
 export type ArrangeIdea = { id: string; title: string; body: string; hint: string };
-export const TASK_VERSION = "2.2.0";
-const step = (id: string, taskId: string, phase: string, taskTitle: string, estimate: string, title: string, body: string, criteria: string[], hint: string, answer: string): Step => ({ id, taskId, phase, taskTitle, estimate, title, body, criteria, hint, answer });
-const tutorial = (id: string, title: string, body: string, criteria: string[], hint: string, answer: string) => step(id, "tutorial", "チュートリアル", "チュートリアル", "10分", title, body, criteria, hint, answer);
-const game = (id: string, title: string, body: string, criteria: string[], hint: string, answer: string) => step(id, "tilt-game", "ゲーム制作", "傾けてゴールを目指すゲーム", "30分", title, body, criteria, hint, answer);
+export const TASK_VERSION = "2.4.0";
+type StepExtras = Pick<Step, "image" | "answerImages">;
+const step = (id: string, taskId: string, phase: string, taskTitle: string, estimate: string, title: string, body: string, criteria: string[], hint: string, answer: string, extras: StepExtras = {}): Step => ({ id, taskId, phase, taskTitle, estimate, title, body, criteria, hint, answer, ...extras });
+const tutorial = (id: string, title: string, body: string, criteria: string[], hint: string, answer: string, extras?: StepExtras) => step(id, "tutorial", "チュートリアル", "チュートリアル", "15分", title, body, criteria, hint, answer, extras);
+const game = (id: string, title: string, body: string, criteria: string[], hint: string, answer: string, extras?: StepExtras) => step(id, "tilt-game", "ゲーム制作", "傾けてゴールを目指すゲーム", "30分", title, body, criteria, hint, answer, extras);
+
+// チュートリアルの後、ゲーム制作に入る前に、何を作るのかを伝える画面
+export const taskIntros: Record<string, TaskIntro> = {
+  "tilt-game": { title: "傾けてゴールを目指すゲームを作ろう", body: "ここからは、チュートリアルで使ったブロックを組み合わせてゲームを作ります。完成すると、次のように遊べます。", points: ["LED画面にボール（点）とゴール（点）が表示される", "micro:bitを前後左右に傾けると、ボールが1マスずつ動く", "ボールがゴールに着くと、ハートが表示される", "ボタンAを押すと、ボールが真ん中に戻ってもう一度遊べる"] },
+};
 
 export const steps: Step[] = [
-  tutorial("T1", "MakeCodeを準備しよう", "「MakeCodeを開く」からMakeCodeを開き、拡張機能メニューの「Edit Logger」を一度開いてください。ロガーに「記録中」と表示されれば準備完了です。", ["MakeCodeが開いている", "この画面の上部の「MakeCode記録」が「記録中」になっている"], "MakeCodeのブロック一覧の下の方に「Edit Logger」があります。開くと自動で記録が始まります。", "Edit Loggerを開き、上部に「実験 P-XXXX に記録中」と表示されていることを確認します。表示されない場合は実験者を呼んでください。"),
-  tutorial("T2", "LEDにアイコンを表示しよう", "基本ブロックを使って、LEDに好きなアイコンを表示してください。", ["LEDにアイコンが表示される"], "「基本」カテゴリーから表示に関係するブロックを探します。", "「最初だけ」の中に「アイコンを表示」ブロックを入れ、アイコンを選びます。"),
-  tutorial("T3", "ボタンを使おう", "ボタンAを押したとき、表示するアイコンが変わるプログラムを作ってください。", ["ボタンAでアイコンが変わる"], "「入力」カテゴリーにボタン操作のイベントがあります。", "「ボタンAが押されたとき」の中に、別の「アイコンを表示」ブロックを入れます。"),
-  tutorial("T4", "動作を確認しよう", "シミュレーターまたは実機でプログラムを動かし、ボタンAを押してください。確認できたら、ここで作ったブロックは消してかまいません。", ["意図した表示に変化することを確認した"], "画面左側のシミュレーターにあるAボタンを押せます。", "シミュレーターのAボタン、または実機のAボタンを押して表示の変化を確認します。"),
-  game("G1", "ボールを表示しよう", "変数 x と y を作り、LED画面の真ん中にボールとなる点を1つ表示してください。", ["変数 x と y がある", "LED画面の真ん中に点が表示される"], "「変数」カテゴリーで変数を作れます。LEDの位置は左上が x=0, y=0、右下が x=4, y=4 です。", "「最初だけ」で x と y を 2 にし、「ずっと」の中で「点灯 x x y y」（LEDカテゴリー）を使います。"),
-  game("G2", "左右に傾けてボールを動かそう", "micro:bitを右に傾けるとボールが右へ、左に傾けると左へ1マス動くようにしてください。", ["右に傾けると右へ動く", "左に傾けると左へ動く", "前の位置の点が消える"], "「入力」の「ゆさぶられたとき」ブロックは、プルダウンで「右に傾けた」などに変えられます。", "「右に傾けたとき」の中で「表示を消す」→「x を 1 だけ増やす」、「左に傾けたとき」の中で「表示を消す」→「x を -1 だけ増やす」を入れます。"),
-  game("G3", "上下にも動かそう", "ロゴを上や下に傾けたとき、ボールが上下に動くようにしてください。", ["上下に傾けるとボールが上下に動く"], "使うのは y です。yは下に行くほど大きくなります。", "「ロゴが上になったとき」で y を 1 増やし、「ロゴが下になったとき」で y を -1 増やします。どちらも先に「表示を消す」を入れます。"),
-  game("G4", "ゴールを表示しよう", "ボールとは別の位置にゴールとなる点を表示してください。", ["ゴールの位置が表示される"], "ゴール用に新しい変数を2つ作ります。", "変数 goal_x と goal_y を作り、「最初だけ」で値を決め、「ずっと」の中で「点灯 goal_x goal_y」を追加します。"),
-  game("G5", "ゴールしたらハートを出そう", "ボールがゴールに重なったら、ハートのアイコンを表示してください。", ["ゴールに着くとハートが表示される"], "x と goal_x、y と goal_y の両方が等しいかを調べます。「論理」の「かつ」を使います。", "「ずっと」の中に「もし x = goal_x かつ y = goal_y なら」を入れ、その中で「アイコンを表示（ハート）」を使います。"),
-  game("G6", "Aボタンでやり直せるようにしよう", "ボタンAを押すと、ボールが最初の位置に戻ってもう一度遊べるようにしてください。", ["ボタンAでボールが真ん中に戻る"], "「最初だけ」で設定した値を、ボタンのイベントの中でもう一度設定します。", "「ボタンAが押されたとき」の中で「表示を消す」、x を 2、y を 2 にします。"),
-  game("G7", "実機で遊んでみよう", "完成したゲームをmicro:bitに書き込み、実際に傾けてゴールまで動かしてください。", ["実機でゴールまで動かせた"], "「ダウンロード」ボタンで書き込みます。うまく動かないときはシミュレーターと見比べます。", "USBでmicro:bitをつないで「ダウンロード」を押し、本体を傾けて遊びます。"),
+  tutorial("T1", "MakeCodeを準備しよう", "となりのウィンドウのMakeCodeで、拡張機能メニューの「Edit Logger」を一度開いてください。ロガーに「記録中」と表示されれば準備完了です。表示されない場合は実験者を呼んでください。", ["MakeCodeが開いている", "この画面の上部の「MakeCode記録」が「記録中」になっている"], "", ""),
+  tutorial("T2", "LEDにアイコンを表示しよう", "「最初だけ」と「ずっと」の両方に「アイコンを表示」ブロックを入れ、それぞれ違うアイコンを選んでください。", ["「最初だけ」と「ずっと」の両方に「アイコンを表示」がある"], "「基本」カテゴリーから表示に関係するブロックを探します。", "「最初だけ」と「ずっと」の中に「アイコンを表示」ブロックを追加し、それぞれ別のアイコンを選択します。", { answerImages: ["/tasks/t2_answer.png"] }),
+  tutorial("T3", "動作の確認方法を知ろう", "作ったプログラムは、micro:bitに書き込んで動きを確かめます。MakeCodeの画面左下にある「ダウンロード」ボタンを押して、T2のプログラムをmicro:bitに書き込んでください。書き込みが終わると、micro:bitでプログラムが動き始めます。このあとのステップでも、作ったらこの方法で書き込んで確認します。エラーなどが出たら、実験者に声をかけてください。", ["左下の「ダウンロード」から書き込み、「最初だけ」のアイコンのあとに「ずっと」のアイコンが表示される"], "", ""),
+  tutorial("T4", "ボタンを使おう", "ボタンAを押したとき、表示するアイコンが変わるプログラムを作ってください。", ["左下の「ダウンロード」から書き込み、ボタンAを押すとアイコンが変わる"], "「入力」カテゴリーにある「ボタンAが押されたとき」というブロックを使います。", "「ボタンAが押されたとき」の中に「アイコンを表示」ブロックを追加し、別のアイコンを選択します。", { answerImages: ["/tasks/t4_answer.png"] }),
+  tutorial("T5", "変数を使ってみよう", "これまでに作ったブロックを消してから始めます。次の順に作ってください。\n1. 「変数」カテゴリーの「変数を追加する」から、test という名前の変数を作る\n2. 「最初だけ」の中に「変数 test を 0 にする」を入れる\n3. 「ずっと」の中に「基本」カテゴリーの「文字列を表示」を入れ、文字列の部分に丸い形の「test」ブロックをはめ込む\n4. 「ボタンAが押されたとき」の中に「変数 test を 1 だけ増やす」を入れる", ["変数 test がある", "左下の「ダウンロード」から書き込み、ボタンAを押すたびに数字が 1 ずつ増える"], "「変数 test を 0 にする」「変数 test を 1 だけ増やす」と丸い形の「test」ブロックは、変数を作ると「変数」カテゴリーに出てきます。", "「変数」→「変数を追加する」で test と入力して作ります。「最初だけ」に「変数 test を 0 にする」、「ずっと」に「文字列を表示 test」、「ボタンAが押されたとき」に「変数 test を 1 だけ増やす」を入れます。", { answerImages: ["/tasks/t5_answer_1.jpg", "/tasks/t5_answer_2.jpg", "/tasks/t5_answer_3.jpg", "/tasks/t5_answer_4.jpg"] }),
+  tutorial("T6", "真ん中のLEDを光らせよう", "これまでに作ったブロックを消してから始めます。「LED」カテゴリーの「点灯」ブロックを「ずっと」の中に入れ、LED画面の真ん中の点を1つ光らせてください。LEDの位置は左上が x=0, y=0、右下が x=4, y=4 です。", ["左下の「ダウンロード」から書き込み、LED画面の真ん中の点が光る"], "「LED」カテゴリーにある「点灯 x 0 y 0」というブロックを使います。真ん中は x=2, y=2 です。", "「ずっと」の中に「点灯」ブロックを追加し、x を 2、y を 2 にします。", { answerImages: ["/tasks/t6_answer.png"] }),
+  game("G1", "ボールを表示しよう", "T5と同じ方法で変数 x と y を作り、「最初だけ」で x と y を 2 にしてください。そのあと、T6の「点灯」ブロックの数字の代わりに x と y を使って、LED画面の真ん中にボールとなる点を表示してください。", ["変数 x と y がある", "「点灯」ブロックで x と y を使っている", "左下の「ダウンロード」から書き込み、LED画面の真ん中に点が表示される"], "T6の「点灯 x 2 y 2」の数字の部分に、「変数」カテゴリーの x と y のブロックをはめ込みます。", "「最初だけ」で x と y を 2 にし、「ずっと」の中で「点灯 x x y y」（LEDカテゴリー）を使います。"),
+  game("G2", "左右に傾けてボールを動かそう", "micro:bitを右に傾けるとボールが右へ、左に傾けると左へ1マス動くようにしてください。", ["左下の「ダウンロード」から書き込み、右に傾けると右へ動く", "左に傾けると左へ動く", "前の位置の点が消える"], "「入力」の「ゆさぶられたとき」ブロックは、プルダウンで「右に傾けた」などに変えられます。", "「右に傾けたとき」の中で「表示を消す」→「x を 1 だけ増やす」、「左に傾けたとき」の中で「表示を消す」→「x を -1 だけ増やす」を入れます。"),
+  game("G3", "上下にも動かそう", "ロゴを上や下に傾けたとき、ボールが上下に動くようにしてください。", ["左下の「ダウンロード」から書き込み、上下に傾けるとボールが上下に動く"], "使うのは y です。yは下に行くほど大きくなります。", "「ロゴが上になったとき」で y を 1 増やし、「ロゴが下になったとき」で y を -1 増やします。どちらも先に「表示を消す」を入れます。"),
+  game("G4", "ゴールを表示しよう", "ボールとは別の位置にゴールとなる点を表示してください。", ["左下の「ダウンロード」から書き込み、ゴールの位置が表示される"], "ゴール用に新しい変数を2つ作ります。", "変数 goal_x と goal_y を作り、「最初だけ」で値を決め、「ずっと」の中で「点灯 goal_x goal_y」を追加します。"),
+  game("G5", "ゴールしたらハートを出そう", "ボールがゴールに重なったら、ハートのアイコンを表示してください。", ["左下の「ダウンロード」から書き込み、ゴールに着くとハートが表示される"], "x と goal_x、y と goal_y の両方が等しいかを調べます。「論理」の「かつ」を使います。", "「ずっと」の中に「もし x = goal_x かつ y = goal_y なら」を入れ、その中で「アイコンを表示（ハート）」を使います。"),
+  game("G6", "Aボタンでやり直せるようにしよう", "ボタンAを押すと、ボールが最初の位置に戻ってもう一度遊べるようにしてください。", ["左下の「ダウンロード」から書き込み、ボタンAでボールが真ん中に戻る"], "「最初だけ」で設定した値を、ボタンのイベントの中でもう一度設定します。", "「ボタンAが押されたとき」の中で「表示を消す」、x を 2、y を 2 にします。"),
+  game("G7", "通して遊んでみよう", "完成したゲームを最初から最後まで遊んでみてください。うまく動かないところがあれば、直してからもう一度書き込みます。", ["ボールをゴールまで動かしてハートが出た", "ボタンAでやり直し、もう一度ゴールできた"], "動かないところは、前のステップに戻って完了条件を見直してもかまいません。", "最新のプログラムを左下の「ダウンロード」から書き込み、傾けてゴールまで動かします。ハートが出たらボタンAを押して、もう一度遊びます。"),
 ];
 
 export const arrangeIdeas: ArrangeIdea[] = [

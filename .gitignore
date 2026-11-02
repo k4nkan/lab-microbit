@@ -16,3 +16,5 @@ tools/out/
 
 # 研究ノート（Obsidian vault）。別の private リポジトリで管理する
 research/
+
+tmp

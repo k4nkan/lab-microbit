@@ -24,9 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASETS_DIR = ROOT / "microbit-research-website" / "backend" / "data" / "datasets"
 
 STEP_LABELS = {
-    "before_tasks": "開始前", "T1": "準備", "T2": "アイコン表示", "T3": "ボタン", "T4": "動作確認",
-    "G1": "ボール表示", "G2": "左右に動かす", "G3": "上下に動かす", "G4": "ゴール表示", "G5": "ゴール判定",
-    "G6": "やり直し", "G7": "実機で遊ぶ", "arrange": "自由アレンジ", "finished": "終了",
+    "before_tasks": "開始前", "T1": "準備", "T2": "アイコン表示", "T3": "確認方法", "T4": "ボタン", "T5": "変数", "T6": "点灯",
+    "intro": "ゲーム説明", "G1": "ボール表示", "G2": "左右に動かす", "G3": "上下に動かす", "G4": "ゴール表示", "G5": "ゴール判定",
+    "G6": "やり直し", "G7": "通して遊ぶ", "arrange": "自由アレンジ", "finished": "終了",
 }
 HELP_EVENTS = ("hint_opened", "answer_opened", "arrange_hint_opened")
 
@@ -121,6 +121,8 @@ class Dataset:
         for _, r in self.problem.sort_values("t_sec").iterrows():
             if r["event_type"] == "step_viewed" and isinstance(r["step_id"], str):
                 marks.append((r["step_id"], r["t_sec"]))
+            elif r["event_type"] == "task_intro_viewed":
+                marks.append(("intro", r["t_sec"]))
             elif r["event_type"] == "task_started" and r.get("task_id") == "arrange":
                 marks.append(("arrange", r["t_sec"]))
             elif r["event_type"] == "task_completed" and r["step_id"] == "G7":

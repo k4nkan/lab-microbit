@@ -12,6 +12,8 @@ micro:bit / MakeCode を使った学習実験の研究リポジトリ。実験�
 
 - 直近の進捗: `research/log/` の新しい日付から数件
 - 設計判断の経緯: `research/decisions/`
+- 実験の条件・事前説明: `research/experiments/実験概要.md`
+- リポジトリ・参考文献のリンク: `research/links.md`
 - 起動・実験の流れ・分析手順: `docs/`（[setup](docs/setup.md) / [experiment](docs/experiment.md) / [analysis](docs/analysis.md)）
 
 ## 構成
