@@ -58,3 +58,18 @@ make stop    # port 競合時にローカル server を止める
 | 問題サイト（学習者画面） | http://localhost:5173 |
 | 問題サイト（管理画面） | http://localhost:5173/admin |
 | API 仕様 | http://localhost:8000/docs |
+
+## うまく接続できないとき
+
+| 症状 | 確認・対処 |
+| --- | --- |
+| 問題サイトが「API: 未接続」 | API（port 8000）が落ちている。`make experiment` のログに `bad interpreter` があれば、下のコマンドで仮想環境を作り直す |
+| 起動時に port 使用中のエラー | `make stop` してから `make experiment` |
+| 「MakeCode記録: 未接続」 | MakeCode で Edit Logger を開き直す |
+| 書き込んでも `boot` やセンサーが記録されない | micro:bit が WebUSB で接続されていない。MakeCode の「ダウンロード」横の「…」から接続する |
+
+```bash
+# Python のバージョンを入れ替えたあとなど、API の仮想環境が壊れたとき
+cd microbit-research-website/backend
+rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
