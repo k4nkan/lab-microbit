@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASETS_DIR = ROOT / "microbit-research-website" / "backend" / "data" / "datasets"
 
 STEP_LABELS = {
-    "before_tasks": "開始前", "T1": "準備", "T2": "アイコン表示", "T3": "確認方法", "T4": "ボタン", "T5": "変数", "T6": "点灯",
+    "before_tasks": "開始前", "T1": "準備", "T2": "アイコン表示", "T3": "確認方法", "T4": "ボタン", "T5": "変数", "T6": "条件分岐", "T7": "点灯",
     "intro": "ゲーム説明", "G1": "ボール表示", "G2": "左右に動かす", "G3": "上下に動かす", "G4": "ゴール表示", "G5": "ゴール判定",
     "G6": "やり直し", "G7": "通して遊ぶ", "arrange": "自由アレンジ", "finished": "終了",
 }
