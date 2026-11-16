@@ -29,7 +29,7 @@ DB_PATH = DATA_DIR / "research.db"
 OUT_DIR = DATA_DIR / "datasets"
 
 SENSOR_KEYS = ["accelerationX", "accelerationY", "accelerationZ", "lightLevel", "temperature",
-               "buttonA", "buttonB", "logoTouch", "soundLevel", "compassHeading"]
+               "buttonA", "buttonB", "logoTouch", "soundLevel", "compassHeading", "ledMask"]
 # Same columns as the Edit Logger's "Export CSV", so tools/*-analytics.py can read it.
 LOGGER_CSV_HEADERS = ["at", "localDate", "timeZone", "sessionStartedAt", "sessionId", "type", "elapsedMs",
                       "source", "sim", "files", "totalBlocks", "contentHash", "mainTs", "mainBlocks", "runId",
