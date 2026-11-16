@@ -16,6 +16,8 @@ export type SessionState = {
   taskStartedAt?: string;
   stepStartedAt?: string;
   freeStartedAt?: string;
+  // チェックポイントで実験者の確認を待っている間、学習者が押したのが「完了」か「未完了」か
+  checkpointCompleted?: boolean;
   freeIdea?: string;
   freeSummary?: string;
   freeStatus?: string;

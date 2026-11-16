@@ -305,6 +305,32 @@ export default function App() {
       next,
     );
   }
+  async function checkpointResult(ok: boolean) {
+    if (!session || !currentStep) return;
+    const key = `${currentStep.id}:checkpoint_ng`;
+    const ngCount = session.counts[key] || 0;
+    await log("checkpoint_checked", currentStep.taskId, currentStep.id, {
+      result: ok ? "ok" : "ng",
+      attempt: ngCount + 1,
+      previous_ng: ngCount,
+    });
+    if (ok) return move("next", session.checkpointCompleted ?? true);
+    const next = {
+      ...session,
+      screen: "steps",
+      checkpointCompleted: undefined,
+      counts: { ...session.counts, [key]: ngCount + 1 },
+      stepStartedAt: new Date().toISOString(),
+    };
+    await saveProgress(next);
+    await log(
+      "step_viewed",
+      currentStep.taskId,
+      currentStep.id,
+      { visit: "checkpoint_retry" },
+      next,
+    );
+  }
   async function move(direction: "next" | "back", completed = true) {
     if (!session || !currentStep) return;
     if (direction === "back") {
@@ -333,6 +359,30 @@ export default function App() {
       );
       return;
     }
+    // チェックポイントのあるステップでは、次へ進む前に実験者の確認を待つ
+    if (currentStep.checkpoint && session.screen !== "checkpoint") {
+      const waiting = {
+        ...session,
+        screen: "checkpoint",
+        checkpointCompleted: completed,
+      };
+      setHintOpen(false);
+      setAnswerOpen(false);
+      await saveProgress(waiting);
+      await log(
+        "checkpoint_requested",
+        currentStep.taskId,
+        currentStep.id,
+        { completion_status: completed ? "completed" : "unfinished" },
+        waiting,
+      );
+      return;
+    }
+    const base = {
+      ...session,
+      screen: "steps",
+      checkpointCompleted: undefined,
+    };
     const stepDuration = session.stepStartedAt
       ? Date.now() - Date.parse(session.stepStartedAt)
       : null;
@@ -352,7 +402,7 @@ export default function App() {
           : null,
       });
       const next = {
-        ...session,
+        ...base,
         screen: "free",
         taskStartedAt: undefined,
         stepStartedAt: undefined,
@@ -364,7 +414,7 @@ export default function App() {
     const changedTask = nextStep.taskId !== currentStep.taskId;
     const changedAt = new Date().toISOString();
     const next = {
-      ...session,
+      ...base,
       stepIndex: index,
       stepStartedAt: changedAt,
       taskStartedAt: changedTask ? changedAt : session.taskStartedAt,
@@ -377,7 +427,7 @@ export default function App() {
       });
     if (changedTask && taskIntros[nextStep.taskId]) {
       const intro = {
-        ...session,
+        ...base,
         screen: "task-intro",
         stepIndex: index,
         taskStartedAt: undefined,
@@ -655,7 +705,7 @@ export default function App() {
             </table>
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 p-4">
-            ゲームの左右・上下と同じように、センサーの値と数字（閾値）を比べて、どこからを「反応した」とするかを自分で決めてください。「ゆさぶられたとき」「大きな音がしたとき」のような、反応をmicro:bitが決めるブロックは使いません。ちょうどいい数字は、「傾きの閾値を試そう」のように数字を変えて書き込み直しながら探します。
+            ゲームの左右・上下と同じように、センサーの値と数字を比べて、どこからを「反応した」とするかを自分で決めてください。「ゆさぶられたとき」「大きな音がしたとき」のような、反応をmicro:bitが決めるブロックは使いません。ちょうどいい数字は、「ちょうどいい傾きを探そう」のように数字を変えて書き込み直しながら探します。
           </p>
           {(
             [
@@ -891,6 +941,48 @@ export default function App() {
         </div>
       </Shell>
     );
+  if (session.screen === "checkpoint" && currentStep.checkpoint) {
+    const ngCount = session.counts[`${currentStep.id}:checkpoint_ng`] || 0;
+    return (
+      <Shell status={status}>
+        {loggerWarning}
+        <div className="card mx-auto max-w-3xl">
+          <p className="mb-2 text-sm font-bold text-indigo-700">確認</p>
+          <h1 className="text-3xl font-bold">実験者を呼んでください</h1>
+          <p className="mt-4 text-lg leading-8">
+            ここまでの動きを実験者が確認します。micro:bitはそのままにしておいてください。
+          </p>
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5">
+            <h2 className="font-bold">実験者が確認すること</h2>
+            <ul className="mt-2 list-disc space-y-1 pl-6">
+              {currentStep.checkpoint.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <p className="mt-4 text-sm text-slate-600">
+              {ngCount === 0
+                ? "NGのときは「完了条件の〇〇がまだのようです。もう一度試してみてください」とだけ伝える。"
+                : `NG ${ngCount}回目のあと。NGなら「解答例を見てもいいですよ」と伝える。`}
+            </p>
+          </div>
+          <div className="mt-7 flex flex-wrap justify-end gap-3">
+            <button
+              className="btn btn-danger"
+              onClick={() => checkpointResult(false)}
+            >
+              NG（ステップに戻る）
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => checkpointResult(true)}
+            >
+              確認OK（次へ進む）
+            </button>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
   return (
     <Shell status={status}>
       {loggerWarning}
@@ -924,7 +1016,7 @@ export default function App() {
           </p>
           {currentStep.image && (
             <img
-              className="mt-5 max-w-full rounded-xl"
+              className="mt-5 w-full rounded-xl md:w-1/2"
               src={currentStep.image}
               alt="問題の参考画像"
             />
@@ -958,10 +1050,13 @@ export default function App() {
               )}
               {currentStep.answer && (
                 <Help
-                  title="解答"
+                  title="解答例"
                   open={answerOpen}
                   onClick={() => toggleHelp("answer")}
                 >
+                  <span className="mb-2 block text-sm text-slate-500">
+                    一例です。別のやり方でも、完了条件どおりに動けばOKです。
+                  </span>
                   {currentStep.answer}
                   {currentStep.answerImages?.map((src) => (
                     <img
