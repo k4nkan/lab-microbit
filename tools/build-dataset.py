@@ -9,6 +9,7 @@ Usage:
 Output: microbit-research-website/backend/data/datasets/<開始日時>_<参加者ID>/
 Only the standard library is used.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,17 +29,55 @@ DATA_DIR = ROOT / "microbit-research-website" / "backend" / "data"
 DB_PATH = DATA_DIR / "research.db"
 OUT_DIR = DATA_DIR / "datasets"
 
-SENSOR_KEYS = ["accelerationX", "accelerationY", "accelerationZ", "lightLevel", "temperature",
-               "buttonA", "buttonB", "logoTouch", "soundLevel", "compassHeading", "ledMask"]
+SENSOR_KEYS = [
+    "accelerationX",
+    "accelerationY",
+    "accelerationZ",
+    "lightLevel",
+    "temperature",
+    "buttonA",
+    "buttonB",
+    "logoTouch",
+    "soundLevel",
+    "compassHeading",
+    "ledMask",
+]
 # Same columns as the Edit Logger's "Export CSV", so tools/*-analytics.py can read it.
-LOGGER_CSV_HEADERS = ["at", "localDate", "timeZone", "sessionStartedAt", "sessionId", "type", "elapsedMs",
-                      "source", "sim", "files", "totalBlocks", "contentHash", "mainTs", "mainBlocks", "runId",
-                      "bootAt", "runningContentHash", "runAnchorSource", "blockChanges", *SENSOR_KEYS, "detail"]
+LOGGER_CSV_HEADERS = [
+    "at",
+    "localDate",
+    "timeZone",
+    "sessionStartedAt",
+    "sessionId",
+    "type",
+    "elapsedMs",
+    "source",
+    "sim",
+    "files",
+    "totalBlocks",
+    "contentHash",
+    "mainTs",
+    "mainBlocks",
+    "runId",
+    "bootAt",
+    "runningContentHash",
+    "runAnchorSource",
+    "blockChanges",
+    *SENSOR_KEYS,
+    "detail",
+]
 
 
 BLOCKLY_NS = "{https://developers.google.com/blockly/xml}"
-LOOP_TYPES = {"controls_repeat_ext", "controls_whileUntil", "controls_simple_for", "controls_for_of",
-              "pxt_controls_for", "pxt_controls_for_of", "device_while"}
+LOOP_TYPES = {
+    "controls_repeat_ext",
+    "controls_whileUntil",
+    "controls_simple_for",
+    "controls_for_of",
+    "pxt_controls_for",
+    "pxt_controls_for_of",
+    "device_while",
+}
 
 
 def code_metrics(blocks_xml: str) -> dict:
@@ -49,8 +88,17 @@ def code_metrics(blocks_xml: str) -> dict:
     (stands in for SPN, as micro:bit programs have no sprites); dead: blocks MakeCode
     disabled because they are not attached to any handler.
     """
-    empty = {"bln": 0, "scripts": 0, "executed_blocks": 0, "dead_blocks": 0, "lob_avg": 0, "ccn_avg": 0,
-             "ccn_max": 0, "variables": 0, "script_types": ""}
+    empty = {
+        "bln": 0,
+        "scripts": 0,
+        "executed_blocks": 0,
+        "dead_blocks": 0,
+        "lob_avg": 0,
+        "ccn_avg": 0,
+        "ccn_max": 0,
+        "variables": 0,
+        "script_types": "",
+    }
     try:
         root = ET.fromstring(blocks_xml) if blocks_xml else None
     except ET.ParseError:
@@ -60,7 +108,9 @@ def code_metrics(blocks_xml: str) -> dict:
     tag = lambda el: el.tag.replace(BLOCKLY_NS, "")
     blocks = [el for el in root.iter() if tag(el) == "block"]
     dead = [el for el in blocks if el.get("disabled-reasons") or el.get("disabled") == "true"]
-    scripts = [el for el in root if tag(el) == "block" and not (el.get("disabled-reasons") or el.get("disabled") == "true")]
+    scripts = [
+        el for el in root if tag(el) == "block" and not (el.get("disabled-reasons") or el.get("disabled") == "true")
+    ]
     sizes, ccns = [], []
     for script in scripts:
         inner = [el for el in script.iter() if tag(el) == "block"]
@@ -75,9 +125,13 @@ def code_metrics(blocks_xml: str) -> dict:
         ccns.append(1 + branches)
     variables = next((el for el in root if tag(el) == "variables"), None)
     return {
-        "bln": len(blocks), "scripts": len(scripts), "executed_blocks": sum(sizes), "dead_blocks": len(dead),
+        "bln": len(blocks),
+        "scripts": len(scripts),
+        "executed_blocks": sum(sizes),
+        "dead_blocks": len(dead),
         "lob_avg": round(sum(sizes) / len(sizes), 2) if sizes else 0,
-        "ccn_avg": round(sum(ccns) / len(ccns), 2) if ccns else 0, "ccn_max": max(ccns, default=0),
+        "ccn_avg": round(sum(ccns) / len(ccns), 2) if ccns else 0,
+        "ccn_max": max(ccns, default=0),
         "variables": len(variables) if variables is not None else 0,
         "script_types": " ".join(sorted(script.get("type", "") for script in scripts)),
     }
@@ -154,7 +208,10 @@ class StepClock:
 
 def build(db, session, out_root: Path) -> Path:
     session_id = session["session_id"]
-    name = session["export_name"] or f"{parse_time(session['started_at']).astimezone():%Y%m%d-%H%M%S}_{session['participant_id']}"
+    name = (
+        session["export_name"]
+        or f"{parse_time(session['started_at']).astimezone():%Y%m%d-%H%M%S}_{session['participant_id']}"
+    )
     out = out_root / name
     if out.exists():
         shutil.rmtree(out)
@@ -168,12 +225,21 @@ def build(db, session, out_root: Path) -> Path:
         item = dict(row)
         item["metadata"] = json.loads(item.pop("metadata_json"))
         problem.append(item)
-    makecode = [json.loads(row["original_json"]) for row in db.execute(
-        "SELECT original_json FROM live_logger_events WHERE experiment_session_id=? ORDER BY event_timestamp, rowid",
-        (session_id,))]
-    makecode += [json.loads(row["original_json"]) for row in db.execute(
-        """SELECT e.original_json FROM imported_logger_events e JOIN imported_logger_sessions s
-        ON s.id=e.imported_session_id WHERE s.experiment_session_id=? ORDER BY e.event_timestamp""", (session_id,))]
+    makecode = [
+        json.loads(row["original_json"])
+        for row in db.execute(
+            "SELECT original_json FROM live_logger_events WHERE experiment_session_id=? ORDER BY event_timestamp, rowid",
+            (session_id,),
+        )
+    ]
+    makecode += [
+        json.loads(row["original_json"])
+        for row in db.execute(
+            """SELECT e.original_json FROM imported_logger_events e JOIN imported_logger_sessions s
+        ON s.id=e.imported_session_id WHERE s.experiment_session_id=? ORDER BY e.event_timestamp""",
+            (session_id,),
+        )
+    ]
     makecode.sort(key=lambda event: parse_time(event.get("at")) or started)
     clock = StepClock(problem)
 
@@ -181,13 +247,23 @@ def build(db, session, out_root: Path) -> Path:
     write_json(out / "raw" / "makecode-events.json", makecode)
 
     # problem_events.csv
-    problem_rows = [{
-        "time_local": local(parse_time(e["client_timestamp"])), "t_sec": t_sec(parse_time(e["client_timestamp"])),
-        "event_type": e["event_type"], "task_id": e["task_id"] or "", "step_id": e["step_id"] or "",
-        "metadata": json.dumps(e["metadata"], ensure_ascii=False), "event_id": e["event_id"],
-    } for e in problem]
-    write_csv(out / "problem_events.csv", problem_rows,
-              ["time_local", "t_sec", "event_type", "task_id", "step_id", "metadata", "event_id"])
+    problem_rows = [
+        {
+            "time_local": local(parse_time(e["client_timestamp"])),
+            "t_sec": t_sec(parse_time(e["client_timestamp"])),
+            "event_type": e["event_type"],
+            "task_id": e["task_id"] or "",
+            "step_id": e["step_id"] or "",
+            "metadata": json.dumps(e["metadata"], ensure_ascii=False),
+            "event_id": e["event_id"],
+        }
+        for e in problem
+    ]
+    write_csv(
+        out / "problem_events.csv",
+        problem_rows,
+        ["time_local", "t_sec", "event_type", "task_id", "step_id", "metadata", "event_id"],
+    )
 
     # code snapshots, unique code files, block changes
     snapshots, type_changes, code_files = [], [], {}
@@ -211,23 +287,45 @@ def build(db, session, out_root: Path) -> Path:
         for block_type in sorted(set(types) | set(previous_types)):
             delta = types.get(block_type, 0) - previous_types.get(block_type, 0)
             if delta:
-                type_changes.append({"snapshot_index": index, "time_local": local(at), "t_sec": t_sec(at),
-                                     "task_id": step[0], "step_id": step[1], "block_type": block_type,
-                                     "delta": delta})
+                type_changes.append(
+                    {
+                        "snapshot_index": index,
+                        "time_local": local(at),
+                        "t_sec": t_sec(at),
+                        "task_id": step[0],
+                        "step_id": step[1],
+                        "block_type": block_type,
+                        "delta": delta,
+                    }
+                )
                 added += max(delta, 0)
                 removed += max(-delta, 0)
         previous_types = types
         metrics = code_metrics(event.get("mainBlocks", ""))
-        snapshots.append({
-            "snapshot_index": index, "time_local": local(at), "t_sec": t_sec(at), "type": event["type"],
-            "phase": event.get("phase", ""), "task_id": step[0], "step_id": step[1],
-            "content_hash": content_hash, **metrics,
-            "blocks_incl_shadows": event.get("totalBlocks", ""), "ts_lines": event.get("mainTs", "").count("\n"),
-            "added_blocks": added, "removed_blocks": removed, "code_file": code_files[content_hash],
-        })
+        snapshots.append(
+            {
+                "snapshot_index": index,
+                "time_local": local(at),
+                "t_sec": t_sec(at),
+                "type": event["type"],
+                "phase": event.get("phase", ""),
+                "task_id": step[0],
+                "step_id": step[1],
+                "content_hash": content_hash,
+                **metrics,
+                "blocks_incl_shadows": event.get("totalBlocks", ""),
+                "ts_lines": event.get("mainTs", "").count("\n"),
+                "added_blocks": added,
+                "removed_blocks": removed,
+                "code_file": code_files[content_hash],
+            }
+        )
     write_csv(out / "code_snapshots.csv", snapshots, list(snapshots[0]) if snapshots else ["snapshot_index"])
-    write_csv(out / "block_type_changes.csv", type_changes,
-              ["snapshot_index", "time_local", "t_sec", "task_id", "step_id", "block_type", "delta"])
+    write_csv(
+        out / "block_type_changes.csv",
+        type_changes,
+        ["snapshot_index", "time_local", "t_sec", "task_id", "step_id", "block_type", "delta"],
+    )
 
     # sensors.csv and runs.csv
     sensors = []
@@ -237,17 +335,40 @@ def build(db, session, out_root: Path) -> Path:
         at = parse_time(event["at"])
         step = clock.at(at)
         ax, ay, az = (event.get(k) or 0 for k in ("accelerationX", "accelerationY", "accelerationZ"))
-        sensors.append({
-            "time_local": local(at), "t_sec": t_sec(at), "phase": event.get("phase", ""),
-            "task_id": step[0], "step_id": step[1], "run_id": event.get("runId", ""),
-            "running_content_hash": event.get("runningContentHash", ""), "device_elapsed_ms": event.get("elapsedMs", ""),
-            **{key: event.get(key, "") for key in SENSOR_KEYS},
-            "acceleration_magnitude": round(math.sqrt(ax * ax + ay * ay + az * az)),
-            "skipped_samples": event.get("skippedSamples", ""), "sim": event.get("sim", ""),
-        })
-    write_csv(out / "sensors.csv", sensors,
-              ["time_local", "t_sec", "phase", "task_id", "step_id", "run_id", "running_content_hash",
-               "device_elapsed_ms", *SENSOR_KEYS, "acceleration_magnitude", "skipped_samples", "sim"])
+        sensors.append(
+            {
+                "time_local": local(at),
+                "t_sec": t_sec(at),
+                "phase": event.get("phase", ""),
+                "task_id": step[0],
+                "step_id": step[1],
+                "run_id": event.get("runId", ""),
+                "running_content_hash": event.get("runningContentHash", ""),
+                "device_elapsed_ms": event.get("elapsedMs", ""),
+                **{key: event.get(key, "") for key in SENSOR_KEYS},
+                "acceleration_magnitude": round(math.sqrt(ax * ax + ay * ay + az * az)),
+                "skipped_samples": event.get("skippedSamples", ""),
+                "sim": event.get("sim", ""),
+            }
+        )
+    write_csv(
+        out / "sensors.csv",
+        sensors,
+        [
+            "time_local",
+            "t_sec",
+            "phase",
+            "task_id",
+            "step_id",
+            "run_id",
+            "running_content_hash",
+            "device_elapsed_ms",
+            *SENSOR_KEYS,
+            "acceleration_magnitude",
+            "skipped_samples",
+            "sim",
+        ],
+    )
 
     boots = [e for e in makecode if e["type"] == "boot"]
     end_of_log = parse_time(makecode[-1]["at"]) if makecode else None
@@ -257,18 +378,25 @@ def build(db, session, out_root: Path) -> Path:
         until = parse_time(boots[index + 1]["at"]) if index + 1 < len(boots) else end_of_log
         samples = [s for s in sensors if s["run_id"] == boot.get("runId")]
         step = clock.at(at)
-        runs.append({
-            "run_index": index + 1, "boot_time_local": local(at), "t_sec": t_sec(at),
-            "task_id": step[0], "step_id": step[1], "run_id": boot.get("runId", ""), "sim": boot.get("sim", ""),
-            "running_content_hash": boot.get("runningContentHash", ""),
-            "code_file": code_files.get(boot.get("runningContentHash", ""), ""),
-            "duration_sec": round((until - at).total_seconds(), 1) if until else "",
-            "sensor_samples": len(samples),
-            "skipped_samples": sum(s["skipped_samples"] or 0 for s in samples),
-            "max_acceleration_magnitude": max((s["acceleration_magnitude"] for s in samples), default=""),
-            "button_a_samples": sum(1 for s in samples if s["buttonA"]),
-            "button_b_samples": sum(1 for s in samples if s["buttonB"]),
-        })
+        runs.append(
+            {
+                "run_index": index + 1,
+                "boot_time_local": local(at),
+                "t_sec": t_sec(at),
+                "task_id": step[0],
+                "step_id": step[1],
+                "run_id": boot.get("runId", ""),
+                "sim": boot.get("sim", ""),
+                "running_content_hash": boot.get("runningContentHash", ""),
+                "code_file": code_files.get(boot.get("runningContentHash", ""), ""),
+                "duration_sec": round((until - at).total_seconds(), 1) if until else "",
+                "sensor_samples": len(samples),
+                "skipped_samples": sum(s["skipped_samples"] or 0 for s in samples),
+                "max_acceleration_magnitude": max((s["acceleration_magnitude"] for s in samples), default=""),
+                "button_a_samples": sum(1 for s in samples if s["buttonA"]),
+                "button_b_samples": sum(1 for s in samples if s["buttonB"]),
+            }
+        )
     write_csv(out / "runs.csv", runs, list(runs[0]) if runs else ["run_index"])
 
     # steps.csv: one row per step with time spent and activity inside it
@@ -278,26 +406,43 @@ def build(db, session, out_root: Path) -> Path:
         intervals = []
         for i, (_, sid) in enumerate(clock.steps):
             if sid == step_id:
-                end = clock.times[i + 1] if i + 1 < len(clock.times) else parse_time(session["completed_at"]) or end_of_log
+                end = (
+                    clock.times[i + 1]
+                    if i + 1 < len(clock.times)
+                    else parse_time(session["completed_at"]) or end_of_log
+                )
                 intervals.append((clock.times[i], end))
         inside = lambda when: when and any(a <= when < b for a, b in intervals if b)
-        step_problem = [e for e in problem if e["step_id"] == step_id or (step_id == "arrange" and e["task_id"] in ("arrange", "free-creation"))]
+        step_problem = [
+            e
+            for e in problem
+            if e["step_id"] == step_id or (step_id == "arrange" and e["task_id"] in ("arrange", "free-creation"))
+        ]
         step_code = [s for s in snapshots if s["step_id"] == step_id]
-        step_rows.append({
-            "step_id": step_id, "task_id": next((t for t, s in clock.steps if s == step_id), ""),
-            "first_viewed_local": local(intervals[0][0]), "visits": len(intervals),
-            "time_on_step_sec": round(sum((b - a).total_seconds() for a, b in intervals if b), 1),
-            "result": "completed" if any(e["event_type"] == "step_completed" and e["step_id"] == step_id for e in problem)
-            else "skipped" if any(e["event_type"] == "step_skipped" and e["step_id"] == step_id for e in problem) else "",
-            "hints_opened": sum(1 for e in step_problem if e["event_type"] in ("hint_opened", "arrange_hint_opened")),
-            "answers_opened": sum(1 for e in step_problem if e["event_type"] == "answer_opened"),
-            "code_changes": sum(1 for s in step_code if s["type"] == "change"),
-            "blocks_at_end": step_code[-1]["bln"] if step_code else "",
-            "blocks_added": sum(s["added_blocks"] for s in step_code),
-            "blocks_removed": sum(s["removed_blocks"] for s in step_code),
-            "boots": sum(1 for b in boots if inside(parse_time(b["at"]))),
-            "sensor_samples": sum(1 for s in sensors if s["step_id"] == step_id),
-        })
+        step_rows.append(
+            {
+                "step_id": step_id,
+                "task_id": next((t for t, s in clock.steps if s == step_id), ""),
+                "first_viewed_local": local(intervals[0][0]),
+                "visits": len(intervals),
+                "time_on_step_sec": round(sum((b - a).total_seconds() for a, b in intervals if b), 1),
+                "result": "completed"
+                if any(e["event_type"] == "step_completed" and e["step_id"] == step_id for e in problem)
+                else "skipped"
+                if any(e["event_type"] == "step_skipped" and e["step_id"] == step_id for e in problem)
+                else "",
+                "hints_opened": sum(
+                    1 for e in step_problem if e["event_type"] in ("hint_opened", "arrange_hint_opened")
+                ),
+                "answers_opened": sum(1 for e in step_problem if e["event_type"] == "answer_opened"),
+                "code_changes": sum(1 for s in step_code if s["type"] == "change"),
+                "blocks_at_end": step_code[-1]["bln"] if step_code else "",
+                "blocks_added": sum(s["added_blocks"] for s in step_code),
+                "blocks_removed": sum(s["removed_blocks"] for s in step_code),
+                "boots": sum(1 for b in boots if inside(parse_time(b["at"]))),
+                "sensor_samples": sum(1 for s in sensors if s["step_id"] == step_id),
+            }
+        )
     write_csv(out / "steps.csv", step_rows, list(step_rows[0]) if step_rows else ["step_id"])
 
     # metrics_per_minute.csv: CRABER-style 1-minute series (state at the end of each minute)
@@ -310,25 +455,52 @@ def build(db, session, out_root: Path) -> Path:
         current = upto[-1] if upto else None
         within = lambda rows, key="t_sec": [r for r in rows if lo <= r[key] < hi]
         step = clock.at(started + timedelta(seconds=min(hi, (end_time - started).total_seconds())))
-        minutes.append({
-            "minute": minute + 1, "task_id": step[0], "step_id": step[1],
-            **{key: current[key] if current else 0 for key in
-               ("bln", "scripts", "executed_blocks", "dead_blocks", "lob_avg", "ccn_avg", "ccn_max", "variables")},
-            "edits": len(within(snapshots)), "blocks_added": sum(s["added_blocks"] for s in within(snapshots)),
-            "blocks_removed": sum(s["removed_blocks"] for s in within(snapshots)),
-            "boots": sum(1 for r in runs if lo <= r["t_sec"] < hi),
-            "sensor_samples": len(within(sensors)),
-            "hints_opened": sum(1 for e in problem_rows if lo <= e["t_sec"] < hi and e["event_type"].endswith("hint_opened")),
-            "answers_opened": sum(1 for e in problem_rows if lo <= e["t_sec"] < hi and e["event_type"] == "answer_opened"),
-        })
+        minutes.append(
+            {
+                "minute": minute + 1,
+                "task_id": step[0],
+                "step_id": step[1],
+                **{
+                    key: current[key] if current else 0
+                    for key in (
+                        "bln",
+                        "scripts",
+                        "executed_blocks",
+                        "dead_blocks",
+                        "lob_avg",
+                        "ccn_avg",
+                        "ccn_max",
+                        "variables",
+                    )
+                },
+                "edits": len(within(snapshots)),
+                "blocks_added": sum(s["added_blocks"] for s in within(snapshots)),
+                "blocks_removed": sum(s["removed_blocks"] for s in within(snapshots)),
+                "boots": sum(1 for r in runs if lo <= r["t_sec"] < hi),
+                "sensor_samples": len(within(sensors)),
+                "hints_opened": sum(
+                    1 for e in problem_rows if lo <= e["t_sec"] < hi and e["event_type"].endswith("hint_opened")
+                ),
+                "answers_opened": sum(
+                    1 for e in problem_rows if lo <= e["t_sec"] < hi and e["event_type"] == "answer_opened"
+                ),
+            }
+        )
     write_csv(out / "metrics_per_minute.csv", minutes, list(minutes[0]) if minutes else ["minute"])
 
     # timeline.csv: both sources in one light-weight, time-ordered table
-    timeline = [{
-        "time": parse_time(e["client_timestamp"]), "source": "problem_site", "event_type": e["event_type"],
-        "phase": "", "task_id": e["task_id"] or "", "step_id": e["step_id"] or "",
-        "detail": json.dumps(e["metadata"], ensure_ascii=False) if e["metadata"] else "",
-    } for e in problem]
+    timeline = [
+        {
+            "time": parse_time(e["client_timestamp"]),
+            "source": "problem_site",
+            "event_type": e["event_type"],
+            "phase": "",
+            "task_id": e["task_id"] or "",
+            "step_id": e["step_id"] or "",
+            "detail": json.dumps(e["metadata"], ensure_ascii=False) if e["metadata"] else "",
+        }
+        for e in problem
+    ]
     snapshot_by_time = {s["time_local"]: s for s in snapshots}
     for e in makecode:
         at = parse_time(e["at"])
@@ -342,13 +514,25 @@ def build(db, session, out_root: Path) -> Path:
             detail = f"run={e.get('runId')} code={code_files.get(e.get('runningContentHash', ''), '')}"
         else:
             detail = ""
-        timeline.append({"time": at, "source": "makecode", "event_type": e["type"], "phase": e.get("phase", ""),
-                         "task_id": step[0], "step_id": step[1], "detail": detail})
+        timeline.append(
+            {
+                "time": at,
+                "source": "makecode",
+                "event_type": e["type"],
+                "phase": e.get("phase", ""),
+                "task_id": step[0],
+                "step_id": step[1],
+                "detail": detail,
+            }
+        )
     timeline.sort(key=lambda row: row["time"] or started)
     for row in timeline:
         row["time_local"], row["t_sec"] = local(row["time"]), t_sec(row["time"])
-    write_csv(out / "timeline.csv", timeline,
-              ["time_local", "t_sec", "source", "event_type", "phase", "task_id", "step_id", "detail"])
+    write_csv(
+        out / "timeline.csv",
+        timeline,
+        ["time_local", "t_sec", "source", "event_type", "phase", "task_id", "step_id", "detail"],
+    )
 
     # Edit-Logger-compatible CSV for tools/block-analytics.py and tools/sensor-analytics.py
     logger_rows = []
@@ -362,18 +546,29 @@ def build(db, session, out_root: Path) -> Path:
     sensor_gaps = []
     for a, b in zip(sensors, sensors[1:]):
         if b["t_sec"] - a["t_sec"] > 60:
-            sensor_gaps.append({"from": a["time_local"], "to": b["time_local"], "seconds": round(b["t_sec"] - a["t_sec"])})
+            sensor_gaps.append(
+                {"from": a["time_local"], "to": b["time_local"], "seconds": round(b["t_sec"] - a["t_sec"])}
+            )
     summary = {
-        "participant_id": session["participant_id"], "session_id": session_id, "status": session["status"],
-        "started_local": local(started), "completed_local": local(parse_time(session["completed_at"])),
-        "duration_min": round((parse_time(session["completed_at"]) - started).total_seconds() / 60, 1) if session["completed_at"] else None,
+        "participant_id": session["participant_id"],
+        "session_id": session_id,
+        "status": session["status"],
+        "started_local": local(started),
+        "completed_local": local(parse_time(session["completed_at"])),
+        "duration_min": round((parse_time(session["completed_at"]) - started).total_seconds() / 60, 1)
+        if session["completed_at"]
+        else None,
         "task_versions": sorted({e["task_version"] for e in problem}),
-        "problem_events": len(problem), "makecode_events": len(makecode),
+        "problem_events": len(problem),
+        "makecode_events": len(makecode),
         "makecode_event_types": dict(Counter(e["type"] for e in makecode)),
         "makecode_by_phase": dict(Counter(f"{e['type']}:{e.get('phase', '')}" for e in makecode)),
         "logger_sessions": sorted({e.get("sessionId", "") for e in makecode}),
-        "code_snapshots": len(snapshots), "unique_code_versions": len(code_files), "runs": len(runs),
-        "sensor_samples": len(sensors), "sensor_samples_skipped_as_idle": sum(s["skipped_samples"] or 0 for s in sensors),
+        "code_snapshots": len(snapshots),
+        "unique_code_versions": len(code_files),
+        "runs": len(runs),
+        "sensor_samples": len(sensors),
+        "sensor_samples_skipped_as_idle": sum(s["skipped_samples"] or 0 for s in sensors),
         "sensor_gaps_over_60s": sensor_gaps,
         "steps_completed": [r["step_id"] for r in step_rows if r["result"] == "completed"],
         "generated_at": local(datetime.now(timezone.utc)),
@@ -385,14 +580,14 @@ def build(db, session, out_root: Path) -> Path:
 
 
 def readme(summary: dict) -> str:
-    return f"""# 実験データ {summary['participant_id']}
+    return f"""# 実験データ {summary["participant_id"]}
 
-- 実施: {summary['started_local']} 〜 {summary['completed_local']}（{summary['duration_min']}分）
-- 教材バージョン: {', '.join(summary['task_versions'])}
-- 問題サイトのイベント: {summary['problem_events']}件 / MakeCodeのイベント: {summary['makecode_events']}件
-- コードのスナップショット: {summary['code_snapshots']}件（異なるコード {summary['unique_code_versions']}種類） / 実行（書き込み・リセット）: {summary['runs']}回
-- センサー: {summary['sensor_samples']}件（静止中として省略 {summary['sensor_samples_skipped_as_idle']}件）
-- 60秒以上センサーが途切れた区間: {len(summary['sensor_gaps_over_60s'])}件（`summary.json` を参照）
+- 実施: {summary["started_local"]} 〜 {summary["completed_local"]}（{summary["duration_min"]}分）
+- 教材バージョン: {", ".join(summary["task_versions"])}
+- 問題サイトのイベント: {summary["problem_events"]}件 / MakeCodeのイベント: {summary["makecode_events"]}件
+- コードのスナップショット: {summary["code_snapshots"]}件（異なるコード {summary["unique_code_versions"]}種類） / 実行（書き込み・リセット）: {summary["runs"]}回
+- センサー: {summary["sensor_samples"]}件（静止中として省略 {summary["sensor_samples_skipped_as_idle"]}件）
+- 60秒以上センサーが途切れた区間: {len(summary["sensor_gaps_over_60s"])}件（`summary.json` を参照）
 
 時刻はすべてPCのローカル時刻、`t_sec` は実験開始からの秒数です。MakeCode側のイベントには、その時点で問題サイトに表示していたステップ（`task_id` / `step_id`）を付けています。
 CSVはExcelで文字化けしないよう、BOM付きUTF-8で保存しています。

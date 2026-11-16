@@ -2,3 +2,4 @@ pandas
 matplotlib
 numpy
 ipykernel
+ruff==0.12.7

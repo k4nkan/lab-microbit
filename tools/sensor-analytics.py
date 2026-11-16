@@ -10,8 +10,7 @@ try:
     import pandas as pd
 except ImportError as error:
     raise SystemExit(
-        f"Missing dependency: {error.name}\n"
-        "Run: python3 -m pip install -r tools/requirements.txt"
+        f"Missing dependency: {error.name}\nRun: python3 -m pip install -r tools/requirements.txt"
     ) from error
 
 ROOT = Path(__file__).resolve().parent
@@ -63,9 +62,7 @@ def load_sensor_events(path: Path) -> pd.DataFrame:
         sensors["plotSec"] = (sensors["at"] - sensors["at"].min()).dt.total_seconds()
 
     sensors["accelerationMagnitude"] = (
-        sensors["accelerationX"].pow(2)
-        + sensors["accelerationY"].pow(2)
-        + sensors["accelerationZ"].pow(2)
+        sensors["accelerationX"].pow(2) + sensors["accelerationY"].pow(2) + sensors["accelerationZ"].pow(2)
     ).pow(0.5)
     sensors["tiltPitchDeg"] = np.degrees(
         np.arctan2(
@@ -73,9 +70,7 @@ def load_sensor_events(path: Path) -> pd.DataFrame:
             np.sqrt(sensors["accelerationY"].pow(2) + sensors["accelerationZ"].pow(2)),
         )
     )
-    sensors["tiltRollDeg"] = np.degrees(
-        np.arctan2(sensors["accelerationY"], sensors["accelerationZ"])
-    )
+    sensors["tiltRollDeg"] = np.degrees(np.arctan2(sensors["accelerationY"], sensors["accelerationZ"]))
     return sensors
 
 

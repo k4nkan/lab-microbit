@@ -9,8 +9,7 @@ try:
     import pandas as pd
 except ImportError as error:
     raise SystemExit(
-        f"Missing dependency: {error.name}\n"
-        "Run: python3 -m pip install -r tools/requirements.txt"
+        f"Missing dependency: {error.name}\nRun: python3 -m pip install -r tools/requirements.txt"
     ) from error
 
 ROOT = Path(__file__).resolve().parent
@@ -34,7 +33,10 @@ def print_summary(events: pd.DataFrame) -> None:
             {"metric": "start", "value": int(events["type"].eq("start").sum())},
             {"metric": "change", "value": int(events["type"].eq("change").sum())},
             {"metric": "stop", "value": int(events["type"].eq("stop").sum())},
-            {"metric": "maxTotalBlocks", "value": int(events["totalBlocks"].max()) if events["totalBlocks"].notna().any() else 0},
+            {
+                "metric": "maxTotalBlocks",
+                "value": int(events["totalBlocks"].max()) if events["totalBlocks"].notna().any() else 0,
+            },
         ]
     )
     print(summary.to_string(index=False))

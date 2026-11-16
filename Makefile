@@ -12,7 +12,7 @@ API_PORT := 8000
 SITE_PORT := 5173
 ANALYSIS_PY := $(if $(wildcard $(ROOT_DIR)/tools/.venv/bin/python),$(ROOT_DIR)/tools/.venv/bin/python,python3)
 
-.PHONY: setup dev experiment build stop dataset analysis-setup analysis
+.PHONY: setup dev experiment build stop dataset analysis-setup analysis format
 
 setup:
 	cd "$(EXT_DIR)" && npm install
@@ -71,3 +71,8 @@ analysis-setup:
 
 analysis:
 	cd tools && MPLBACKEND=Agg $(ANALYSIS_PY) explore.py
+
+# TypeScript は Prettier、Python は ruff で整形する（ruff は make analysis-setup で入る）
+format:
+	cd "$(RESEARCH_SITE_DIR)/frontend" && npm run format
+	$(ANALYSIS_PY) -m ruff format tools "$(RESEARCH_SITE_DIR)/backend/app"

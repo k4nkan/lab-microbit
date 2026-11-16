@@ -49,6 +49,7 @@ https://github.com/k4nkan/microbit-edit-logger
 ```bash
 make build   # 拡張のビルド確認
 make stop    # port 競合時にローカル server を止める
+make format  # TypeScript（Prettier）と Python（ruff）を整形。ruff は make analysis-setup で入る
 ```
 
 | サービス | URL |

@@ -97,7 +97,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="micro:bit Research API", lifespan=lifespan)
-origins = [value.strip() for value in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080,http://localhost:3232").split(",")]
+origins = [
+    value.strip()
+    for value in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080,http://localhost:3232").split(
+        ","
+    )
+]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 
 
@@ -109,9 +114,7 @@ def require_session(db, session_id: str):
 
 
 def current_session(db):
-    return db.execute(
-        "SELECT * FROM sessions WHERE status='active' ORDER BY started_at DESC LIMIT 1"
-    ).fetchone()
+    return db.execute("SELECT * FROM sessions WHERE status='active' ORDER BY started_at DESC LIMIT 1").fetchone()
 
 
 def export_name_for(session) -> str:
@@ -192,8 +195,10 @@ def get_current_experiment(
     and reports its own state through the query parameters."""
     if logging is not None:
         logger_status.update(
-            last_seen=datetime.now(timezone.utc), logging=logging,
-            logger_session_id=logger_session_id or None, unsent=unsent or 0,
+            last_seen=datetime.now(timezone.utc),
+            logging=logging,
+            logger_session_id=logger_session_id or None,
+            unsent=unsent or 0,
         )
     with connect() as db:
         session = current_session(db)
@@ -269,9 +274,17 @@ def save_events(events: list[EventIn]) -> tuple[int, int]:
             if session["participant_id"] != event.participant_id:
                 raise HTTPException(400, "参加者IDとセッションが一致しません")
             row = (
-                str(event.event_id), event.participant_id, event.session_id, event.task_id,
-                event.step_id, event.event_type, event.client_timestamp, now, event.elapsed_ms,
-                event.task_version, json.dumps(event.metadata, ensure_ascii=False),
+                str(event.event_id),
+                event.participant_id,
+                event.session_id,
+                event.task_id,
+                event.step_id,
+                event.event_type,
+                event.client_timestamp,
+                now,
+                event.elapsed_ms,
+                event.task_version,
+                json.dumps(event.metadata, ensure_ascii=False),
             )
             cursor = db.execute("INSERT OR IGNORE INTO problem_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
             if cursor.rowcount:
@@ -336,8 +349,15 @@ def save_live_logger_events(body: LiveLoggerBatch):
                 (event_hash, logger_session_id, experiment_session_id, connection_id,
                  event_timestamp, event_type, received_at, original_json)
                 VALUES (?, ?, ?, NULL, ?, ?, ?, ?)""",
-                (logger_event_key(event, original_json), logger_session_id,
-                 session["session_id"] if session else None, event.get("at"), event.get("type"), now, original_json),
+                (
+                    logger_event_key(event, original_json),
+                    logger_session_id,
+                    session["session_id"] if session else None,
+                    event.get("at"),
+                    event.get("type"),
+                    now,
+                    original_json,
+                ),
             )
             if not cursor.rowcount:
                 duplicate += 1
@@ -401,7 +421,8 @@ def merged_events(db, session_id: str):
     logger_rows = db.execute(
         """SELECT e.* FROM imported_logger_events e
         JOIN imported_logger_sessions s ON s.id=e.imported_session_id
-        WHERE s.experiment_session_id=? ORDER BY e.event_timestamp""", (session_id,)
+        WHERE s.experiment_session_id=? ORDER BY e.event_timestamp""",
+        (session_id,),
     ).fetchall()
     live_logger_rows = db.execute(
         """SELECT event_type, event_timestamp, original_json
@@ -412,14 +433,24 @@ def merged_events(db, session_id: str):
     problem = [event_dict(row) for row in problem_rows]
     logger = [decode_row(row) for row in logger_rows] + [decode_row(row) for row in live_logger_rows]
     merged = [
-        {"participant_id": session["participant_id"], "experiment_session_id": session_id,
-         "source": "problem_site", "timestamp": item["client_timestamp"],
-         "event_type": item["event_type"], "original_event": item}
+        {
+            "participant_id": session["participant_id"],
+            "experiment_session_id": session_id,
+            "source": "problem_site",
+            "timestamp": item["client_timestamp"],
+            "event_type": item["event_type"],
+            "original_event": item,
+        }
         for item in problem
     ] + [
-        {"participant_id": session["participant_id"], "experiment_session_id": session_id,
-         "source": "makecode_logger", "timestamp": item.get("event_timestamp"),
-         "event_type": item.get("event_type"), "original_event": item["original"]}
+        {
+            "participant_id": session["participant_id"],
+            "experiment_session_id": session_id,
+            "source": "makecode_logger",
+            "timestamp": item.get("event_timestamp"),
+            "event_type": item.get("event_type"),
+            "original_event": item["original"],
+        }
         for item in logger
     ]
     merged.sort(key=lambda item: parse_iso(item["timestamp"]) or datetime.min.replace(tzinfo=timezone.utc))
@@ -462,7 +493,13 @@ def import_logger(body: LoggerImport):
             """INSERT INTO imported_logger_sessions
             (experiment_session_id, participant_id, logger_session_id, imported_at, original_json)
             VALUES (?, ?, ?, ?, ?)""",
-            (body.experiment_session_id, body.participant_id, selected, utc_now(), json.dumps(body.logger_data, ensure_ascii=False)),
+            (
+                body.experiment_session_id,
+                body.participant_id,
+                selected,
+                utc_now(),
+                json.dumps(body.logger_data, ensure_ascii=False),
+            ),
         )
         import_id = cursor.lastrowid
         for item in events:
@@ -493,11 +530,24 @@ def export_logs(
     filename = f"{session_id}-{kind}.{format}"
     if format == "json":
         content = json.dumps(data, ensure_ascii=False, indent=2)
-        return Response(content, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        return Response(
+            content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     output = io.StringIO()
     fields = sorted({key for item in data for key in item.keys()}) if data else []
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     for item in data:
-        writer.writerow({key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value for key, value in item.items()})
-    return Response(output.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        writer.writerow(
+            {
+                key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+                for key, value in item.items()
+            }
+        )
+    return Response(
+        output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -114,4 +114,3 @@ def decode_row(row):
         if key in result:
             result[key.removesuffix("_json")] = json.loads(result.pop(key))
     return result
-

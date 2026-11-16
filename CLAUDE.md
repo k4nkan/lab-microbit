@@ -36,6 +36,7 @@ make dataset      # 全実験のデータセットを作り直す
 make analysis     # explore.py を実行して図を tools/out/ に保存
 make build        # 拡張のビルド確認
 make stop         # port 競合時にローカル server を止める
+make format       # TypeScript（Prettier）と Python（ruff）を整形
 ```
 
 ## 規約

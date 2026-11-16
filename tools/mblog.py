@@ -8,6 +8,7 @@ Datasets are built by ``tools/build-dataset.py`` into
     ds.steps                         # one row per step
     mblog.plot_blocks(ds)
 """
+
 from __future__ import annotations
 
 import json
@@ -24,9 +25,25 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASETS_DIR = ROOT / "microbit-research-website" / "backend" / "data" / "datasets"
 
 STEP_LABELS = {
-    "before_tasks": "開始前", "T1": "準備", "T2": "アイコン表示", "T3": "確認方法", "T4": "ボタン", "T5": "変数", "T6": "条件分岐", "T7": "点灯", "T8": "閾値を試す",
-    "intro": "ゲーム説明", "G1": "ボール表示", "G2": "左右に動かす", "G3": "上下に動かす", "G4": "ゴール表示", "G5": "ゴール判定",
-    "G6": "やり直し", "G7": "通して遊ぶ", "arrange": "自由アレンジ", "finished": "終了",
+    "before_tasks": "開始前",
+    "T1": "準備",
+    "T2": "アイコン表示",
+    "T3": "確認方法",
+    "T4": "ボタン",
+    "T5": "変数",
+    "T6": "条件分岐",
+    "T7": "点灯",
+    "T8": "閾値を試す",
+    "intro": "ゲーム説明",
+    "G1": "ボール表示",
+    "G2": "左右に動かす",
+    "G3": "上下に動かす",
+    "G4": "ゴール表示",
+    "G5": "ゴール判定",
+    "G6": "やり直し",
+    "G7": "通して遊ぶ",
+    "arrange": "自由アレンジ",
+    "finished": "終了",
 }
 HELP_EVENTS = ("hint_opened", "answer_opened", "arrange_hint_opened")
 
@@ -34,8 +51,15 @@ HELP_EVENTS = ("hint_opened", "answer_opened", "arrange_hint_opened")
 def use_japanese_font() -> str | None:
     """Pick the first installed Japanese font so labels do not render as boxes."""
     installed = {f.name for f in font_manager.fontManager.ttflist}
-    for name in ("Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP", "Noto Sans JP",
-                 "Yu Gothic", "IPAexGothic", "Meiryo"):
+    for name in (
+        "Hiragino Sans",
+        "Hiragino Kaku Gothic ProN",
+        "Noto Sans CJK JP",
+        "Noto Sans JP",
+        "Yu Gothic",
+        "IPAexGothic",
+        "Meiryo",
+    ):
         if name in installed:
             plt.rcParams["font.family"] = name
             return name
@@ -146,9 +170,16 @@ def list_datasets(root: Path = DATASETS_DIR) -> pd.DataFrame:
     rows = []
     for summary_path in sorted(root.glob("*/summary.json")):
         s = json.loads(summary_path.read_text(encoding="utf-8"))
-        rows.append({"name": summary_path.parent.name, "participant_id": s["participant_id"],
-                     "started": s["started_local"], "duration_min": s["duration_min"],
-                     "problem_events": s["problem_events"], "makecode_events": s["makecode_events"]})
+        rows.append(
+            {
+                "name": summary_path.parent.name,
+                "participant_id": s["participant_id"],
+                "started": s["started_local"],
+                "duration_min": s["duration_min"],
+                "problem_events": s["problem_events"],
+                "makecode_events": s["makecode_events"],
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -166,6 +197,7 @@ def load(key: str | None = None, root: Path = DATASETS_DIR) -> Dataset:
 
 # ---------- derived tables ----------
 
+
 def edit_run_cycles(ds: Dataset, moving_threshold_mg: float = 150) -> pd.DataFrame:
     """One row per run: edits made before it, how long it was tried, and how the board was handled."""
     snaps, sensors, runs = ds.snapshots, ds.sensors, ds.runs.sort_values("t_sec").reset_index(drop=True)
@@ -175,13 +207,17 @@ def edit_run_cycles(ds: Dataset, moving_threshold_mg: float = 150) -> pd.DataFra
         stop = runs.loc[i + 1, "t_sec"] if i + 1 < len(runs) else np.inf
         after = snaps[(snaps["t_sec"] >= start) & (snaps["t_sec"] < stop)]
         during = sensors[(sensors["t_sec"] >= start) & (sensors["t_sec"] < stop)]
-        rows.append({
-            "run_index": run["run_index"], "step_id": run["step_id"], "t_min": start / 60,
-            "edits_before": int(((snaps["t_sec"] >= previous) & (snaps["t_sec"] < start)).sum()),
-            "tried_for_sec": (after["t_sec"].iloc[0] - start) if len(after) else np.nan,
-            "moving_samples": int(((during["acceleration_magnitude"] - 1000).abs() > moving_threshold_mg).sum()),
-            "button_samples": int(((during["buttonA"] == 1) | (during["buttonB"] == 1)).sum()),
-        })
+        rows.append(
+            {
+                "run_index": run["run_index"],
+                "step_id": run["step_id"],
+                "t_min": start / 60,
+                "edits_before": int(((snaps["t_sec"] >= previous) & (snaps["t_sec"] < start)).sum()),
+                "tried_for_sec": (after["t_sec"].iloc[0] - start) if len(after) else np.nan,
+                "moving_samples": int(((during["acceleration_magnitude"] - 1000).abs() > moving_threshold_mg).sum()),
+                "button_samples": int(((during["buttonA"] == 1) | (during["buttonB"] == 1)).sum()),
+            }
+        )
         previous = start
     return pd.DataFrame(rows)
 
@@ -199,12 +235,20 @@ def struggle_minutes(ds: Dataset, window: int = 3, min_churn: int = 6, max_growt
 
 # ---------- plots ----------
 
+
 def _bands(ax, ds: Dataset, label: bool = True) -> None:
     for i, b in ds.step_bands.reset_index(drop=True).iterrows():
         ax.axvspan(b["start_min"], b["end_min"], color="0.5", alpha=0.12 if i % 2 else 0.05, lw=0)
         if label and b["end_min"] - b["start_min"] > 1.5:
-            ax.text(b["start_min"] + 0.2, 1.01, b["step_id"].replace("arrange", "AR"), transform=ax.get_xaxis_transform(),
-                    fontsize=8, color="0.35", va="bottom")
+            ax.text(
+                b["start_min"] + 0.2,
+                1.01,
+                b["step_id"].replace("arrange", "AR"),
+                transform=ax.get_xaxis_transform(),
+                fontsize=8,
+                color="0.35",
+                va="bottom",
+            )
 
 
 def plot_blocks(ds: Dataset, ax=None):
@@ -218,7 +262,9 @@ def plot_blocks(ds: Dataset, ax=None):
     top = max(s["bln"].max(), 1) * 1.08
     ax.scatter(ds.runs["t_min"], [top] * len(ds.runs), marker="v", color="0.2", s=28, label="書き込み", zorder=3)
     help_rows = ds.problem[ds.problem["event_type"].isin(HELP_EVENTS)]
-    ax.scatter(help_rows["t_min"], [top * 1.05] * len(help_rows), marker="D", color="0.5", s=22, label="ヒント・解答", zorder=3)
+    ax.scatter(
+        help_rows["t_min"], [top * 1.05] * len(help_rows), marker="D", color="0.5", s=22, label="ヒント・解答", zorder=3
+    )
     ax.set(xlabel="経過時間（分）", ylabel="ブロック数", ylim=(0, top * 1.12))
     ax.legend(loc="upper left", fontsize=8, ncol=5, frameon=False, bbox_to_anchor=(0, -0.15))
     ax.spines[["top", "right"]].set_visible(False)

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "format": "prettier --write src index.html"
   },
   "dependencies": {
     "react": "19.3.0",
@@ -19,9 +20,9 @@
     "@vitejs/plugin-react": "6.1.2",
     "autoprefixer": "10.6.1",
     "postcss": "8.5.29",
+    "prettier": "3.6.2",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.4"
   }
 }
-
