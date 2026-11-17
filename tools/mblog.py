@@ -233,6 +233,168 @@ def struggle_minutes(ds: Dataset, window: int = 3, min_churn: int = 6, max_growt
     return m[["minute", "step_id", "churn", "executed_growth", "dead_blocks", "boots_in_window", "struggle"]]
 
 
+# ---------- sensing: code thresholds vs. sensor values ----------
+
+# センサーを読む式と、sensors.csv の列。コード中の「式 比較 数字」を閾値として読む
+SENSOR_EXPRESSIONS = {
+    r"input\.acceleration\(Dimension\.X\)": "accelerationX",
+    r"input\.acceleration\(Dimension\.Y\)": "accelerationY",
+    r"input\.acceleration\(Dimension\.Z\)": "accelerationZ",
+    r"input\.acceleration\(Dimension\.Strength\)": "acceleration_magnitude",
+    r"input\.lightLevel\(\)": "lightLevel",
+    r"input\.soundLevel\(\)": "soundLevel",
+}
+SENSOR_LABELS = {
+    "accelerationX": "加速度 x",
+    "accelerationY": "加速度 y",
+    "accelerationZ": "加速度 z",
+    "acceleration_magnitude": "加速度の強さ",
+    "lightLevel": "明るさ",
+    "soundLevel": "音の大きさ",
+}
+_FLIP = {">": "<", "<": ">", ">=": "<=", "<=": ">=", "==": "==", "!=": "!="}
+_NUMBER = r"(-?\d+(?:\.\d+)?)"
+_OP = r"(>=|<=|==|!=|>|<)"
+
+
+def thresholds(ts: str) -> list[dict]:
+    """Comparisons between a sensor reading and a number in a program, e.g. ``input.acceleration(Dimension.X) > 500``.
+    Comparisons against variables are not read."""
+    import re
+
+    found = []
+    for expr, column in SENSOR_EXPRESSIONS.items():
+        for m in re.finditer(rf"{expr}\s*{_OP}\s*{_NUMBER}", ts):
+            found.append((column, m.group(1), float(m.group(2))))
+        for m in re.finditer(rf"{_NUMBER}\s*{_OP}\s*{expr}", ts):
+            found.append((column, _FLIP[m.group(2)], float(m.group(1))))
+    return [
+        {"sensor": c, "op": op, "value": v, "condition": f"{SENSOR_LABELS[c]} {op} {v:g}"}
+        for c, op, v in dict.fromkeys(found)
+    ]
+
+
+def _satisfies(values: pd.Series, op: str, value: float) -> pd.Series:
+    return {
+        ">": values > value,
+        "<": values < value,
+        ">=": values >= value,
+        "<=": values <= value,
+        "==": values == value,
+        "!=": values != value,
+    }[op]
+
+
+def sensing_runs(ds: Dataset, always_ratio: float = 0.8) -> pd.DataFrame:
+    """One row per (device run, threshold in the running code).
+
+    - reached: 実際のセンサー値が条件を満たしたか（①閾値に届いたか）
+    - gap: 一番条件に近づいた値と閾値の差。プラスなら超えた分、マイナスなら足りなかった分
+    - changed: 直前の実行から新しく入った・数字が変わった条件か。changed かつ reached でなければ「直したところを試していない」（②）
+    - state: 届かない / 届いた / ほぼ常に成立（reached_ratio が always_ratio 以上。置いたままでも成り立つ条件で、記号や向きの間違いが疑われる）
+    """
+    runs = ds.runs
+    if runs.empty:
+        return pd.DataFrame()
+    runs = runs[(runs["sim"].astype(str) != "True") & runs["code_file"].notna()].sort_values("t_sec")
+    sensors = ds.sensors
+    rows, previous = [], set()
+    for _, run in runs.iterrows():
+        conds = thresholds((ds.path / run["code_file"]).read_text(encoding="utf-8"))
+        samples = sensors[sensors["run_id"] == run["run_id"]]
+        keys = {(c["sensor"], c["op"], c["value"]) for c in conds}
+        for c in conds:
+            values = samples[c["sensor"]].dropna()
+            ok = _satisfies(values, c["op"], c["value"]) if len(values) else pd.Series(dtype=bool)
+            if c["op"] in (">", ">="):
+                extreme = values.max() if len(values) else np.nan
+                gap = extreme - c["value"]
+            elif c["op"] in ("<", "<="):
+                extreme = values.min() if len(values) else np.nan
+                gap = c["value"] - extreme
+            else:
+                extreme, gap = np.nan, np.nan
+            rows.append(
+                {
+                    "run_index": run["run_index"],
+                    "t_min": run["t_sec"] / 60,
+                    "step_id": run["step_id"],
+                    "tried_sec": run["duration_sec"],
+                    "samples": len(values),
+                    **c,
+                    "closest": extreme,
+                    "gap": gap,
+                    "reached": bool(ok.any()) if len(values) else False,
+                    "reached_ratio": float(ok.mean()) if len(values) else np.nan,
+                    "changed": (c["sensor"], c["op"], c["value"]) not in previous,
+                }
+            )
+            r = rows[-1]
+            r["state"] = (
+                "届かない" if not r["reached"] else "ほぼ常に成立" if r["reached_ratio"] >= always_ratio else "届いた"
+            )
+        previous = keys
+    return pd.DataFrame(rows)
+
+
+def sensing_summary(ds: Dataset) -> pd.DataFrame:
+    """Per run: how many thresholds there were, how many were reached, and whether changed ones were tried."""
+    sr = sensing_runs(ds)
+    if sr.empty:
+        return sr
+    return (
+        sr.groupby(["run_index", "t_min", "step_id", "tried_sec"], sort=False)
+        .agg(
+            conditions=("condition", "size"),
+            reached=("reached", "sum"),
+            changed=("changed", "sum"),
+            changed_untried=("changed", lambda c: int((c & ~sr.loc[c.index, "reached"]).sum())),
+            not_reached=("condition", lambda c: ", ".join(c[~sr.loc[c.index, "reached"]])),
+            always_true=("condition", lambda c: ", ".join(c[sr.loc[c.index, "state"] == "ほぼ常に成立"])),
+        )
+        .reset_index()
+    )
+
+
+def plot_sensing(ds: Dataset, steps: list[str] | None = None, sensors: list[str] | None = None):
+    """センサーごとに、値を点、そのとき動いていたコードの閾値を横線（実線: 届いた / 点線: 届かなかった）、書き込みを縦線で描く。
+    steps を渡すとその区間だけ拡大する。"""
+    sensors = sensors or list(SENSOR_LABELS)
+    s = ds.sensors
+    sr = sensing_runs(ds)
+    runs = ds.runs.sort_values("t_sec")
+    xlim = None
+    if steps:
+        b = ds.step_bands[ds.step_bands["step_id"].isin(steps)]
+        if len(b):
+            xlim = (b["start_min"].min(), b["end_min"].max())
+    fig, axes = plt.subplots(len(sensors), 1, figsize=(12, 1.9 * len(sensors) + 0.6), sharex=True)
+    axes = np.atleast_1d(axes)
+    for i, (ax, col) in enumerate(zip(axes, sensors)):
+        _bands(ax, ds, label=i == 0)
+        part = s if xlim is None else s[(s["t_min"] >= xlim[0]) & (s["t_min"] <= xlim[1])]
+        ax.scatter(part["t_min"], part[col], s=3, color="0.35", lw=0, zorder=2)
+        for t in runs["t_min"]:
+            ax.axvline(t, color="0.75", lw=0.6, zorder=1)
+        if not sr.empty:
+            for _, r in sr[sr["sensor"] == col].iterrows():
+                start = r["t_min"]
+                stop = start + (r["tried_sec"] if pd.notna(r["tried_sec"]) else 0) / 60
+                color = "#c0392b" if r["op"] in (">", ">=") else "#2c6fbb"
+                ax.hlines(
+                    r["value"], start, max(stop, start + 0.05), colors=color, lw=1.6, ls="-" if r["reached"] else ":"
+                )
+        ax.set_ylabel(SENSOR_LABELS[col], fontsize=9)
+        ax.spines[["top", "right"]].set_visible(False)
+    if xlim:
+        axes[-1].set_xlim(xlim)
+    axes[-1].set_xlabel(
+        "経過時間（分）　縦線: 起動（書き込み）／横線: コードの閾値（赤: >、青: <、点線: 届かなかった）"
+    )
+    fig.tight_layout()
+    return fig
+
+
 # ---------- plots ----------
 
 

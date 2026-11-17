@@ -401,13 +401,20 @@ export default function App() {
           ? Date.now() - Date.parse(session.taskStartedAt)
           : null,
       });
+      // アレンジは画面を開いた時点で開始する（参加者は案を選びながら作り始めるため）
+      const startedAt = new Date().toISOString();
       const next = {
         ...base,
         screen: "free",
-        taskStartedAt: undefined,
+        freeStartedAt: startedAt,
+        taskStartedAt: startedAt,
         stepStartedAt: undefined,
       };
+      setHintOpen(false);
+      setAnswerOpen(false);
       await saveProgress(next);
+      await log("task_started", "arrange", null, {}, next);
+      await log("arrange_started", "arrange", null, {}, next);
       return;
     }
     const nextStep = steps[index];
@@ -485,28 +492,11 @@ export default function App() {
       next,
     );
   }
-  async function startFree() {
-    if (!session || !freeIdea.trim()) return;
-    const startedAt = new Date().toISOString();
-    const next = {
-      ...session,
-      freeStartedAt: startedAt,
-      taskStartedAt: startedAt,
-      freeIdea: freeIdea.trim(),
-    };
-    await saveProgress(next);
-    await log("task_started", "arrange", null, {}, next);
-    await log(
-      "arrange_idea_submitted",
-      "arrange",
-      null,
-      { idea: freeIdea.trim() },
-      next,
-    );
-    await log("arrange_started", "arrange", null, {}, next);
-  }
   async function finish() {
     if (!session) return;
+    await log("arrange_idea_submitted", "arrange", null, {
+      idea: freeIdea.trim(),
+    });
     await log("arrange_completed", "arrange", null, {
       idea: freeIdea,
       summary: freeSummary,
@@ -736,73 +726,47 @@ export default function App() {
                       </h3>
                       <p className="mt-1 text-slate-600">{idea.body}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {!session.freeStartedAt &&
-                          (() => {
-                            const lines = freeIdea
-                              .split("\n")
-                              .map((l) => l.trim())
-                              .filter(Boolean);
-                            const selected = lines.includes(idea.title);
-                            return (
-                              <button
-                                className={`btn ${selected ? "btn-primary" : ""}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  const text = (
-                                    selected
-                                      ? lines.filter((l) => l !== idea.title)
-                                      : [...lines, idea.title]
-                                  ).join("\n");
-                                  setFreeIdea(text);
-                                  setSession({ ...session, freeIdea: text });
-                                  void log(
-                                    selected
-                                      ? "arrange_idea_deselected"
-                                      : "arrange_idea_selected",
-                                    "arrange",
-                                    null,
-                                    { idea_id: idea.id },
-                                  );
-                                }}
-                              >
-                                {selected ? "✓ 選択中" : "これをやってみる"}
-                              </button>
-                            );
-                          })()}
+                        {(() => {
+                          const lines = freeIdea
+                            .split("\n")
+                            .map((l) => l.trim())
+                            .filter(Boolean);
+                          const selected = lines.includes(idea.title);
+                          return (
+                            <button
+                              className={`btn ${selected ? "btn-primary" : ""}`}
+                              aria-pressed={selected}
+                              onClick={() => {
+                                const text = (
+                                  selected
+                                    ? lines.filter((l) => l !== idea.title)
+                                    : [...lines, idea.title]
+                                ).join("\n");
+                                setFreeIdea(text);
+                                setSession({ ...session, freeIdea: text });
+                                void log(
+                                  selected
+                                    ? "arrange_idea_deselected"
+                                    : "arrange_idea_selected",
+                                  "arrange",
+                                  null,
+                                  { idea_id: idea.id },
+                                );
+                              }}
+                            >
+                              {selected ? "✓ 選択中" : "これをやってみる"}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </section>
                   ))}
               </div>
             </div>
           ))}
-          {!session.freeStartedAt ? (
-            <div className="mt-8 space-y-4">
-              <p className="text-slate-600">
-                取り組むものを上から選んでください（いくつ選んでもOKです）。例にないものを作る場合は、何を作るかを下の欄に書いてください。
-              </p>
-              <label className="block font-semibold">
-                取り組むもの
-                <textarea
-                  className="field mt-2 min-h-28"
-                  placeholder="例にないものを作る場合は、何を作るか・どのセンサーを使うかを書いてください"
-                  value={freeIdea}
-                  onChange={(e) => {
-                    setFreeIdea(e.target.value);
-                    setSession({ ...session, freeIdea: e.target.value });
-                  }}
-                />
-              </label>
-              <button
-                className="btn btn-primary"
-                disabled={!freeIdea.trim()}
-                onClick={startFree}
-              >
-                アレンジを始める
-              </button>
-            </div>
-          ) : (
-            <div className="mt-8 space-y-5">
-              {(() => {
+          <div className="mt-8 space-y-5">
+            {session.freeStartedAt &&
+              (() => {
                 const left =
                   ARRANGE_MINUTES * 60000 -
                   (now - Date.parse(session.freeStartedAt));
@@ -821,43 +785,51 @@ export default function App() {
                   </p>
                 );
               })()}
-              <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4">
-                <span className="block text-sm text-slate-500">
-                  取り組むもの
-                </span>
-                {session.freeIdea}
-              </p>
-              <label className="block font-semibold">
-                実際に作ったもの
-                <textarea
-                  className="field mt-2 min-h-28"
-                  value={freeSummary}
-                  onChange={(e) => {
-                    setFreeSummary(e.target.value);
-                    setSession({ ...session, freeSummary: e.target.value });
-                  }}
-                />
-              </label>
-              <label className="block font-semibold">
-                完成状況
-                <select
-                  className="field mt-2"
-                  value={freeStatus}
-                  onChange={(e) => {
-                    setFreeStatus(e.target.value);
-                    setSession({ ...session, freeStatus: e.target.value });
-                  }}
-                >
-                  <option>完成</option>
-                  <option>一部完成</option>
-                  <option>未完成</option>
-                </select>
-              </label>
-              <button className="btn btn-primary" onClick={finish}>
-                アレンジを終了して実験を終える
-              </button>
-            </div>
-          )}
+            <p className="text-slate-600">
+              取り組むものを上から選んでください（いくつ選んでもOK、途中で変えてもOKです）。例にないものを作る場合は、何を作るかを下の欄に書いてください。
+            </p>
+            <label className="block font-semibold">
+              取り組むもの
+              <textarea
+                className="field mt-2 min-h-28"
+                placeholder="例にないものを作る場合は、何を作るか・どのセンサーを使うかを書いてください"
+                value={freeIdea}
+                onChange={(e) => {
+                  setFreeIdea(e.target.value);
+                  setSession({ ...session, freeIdea: e.target.value });
+                }}
+              />
+            </label>
+            <label className="block font-semibold">
+              実際に作ったもの
+              <textarea
+                className="field mt-2 min-h-28"
+                value={freeSummary}
+                onChange={(e) => {
+                  setFreeSummary(e.target.value);
+                  setSession({ ...session, freeSummary: e.target.value });
+                }}
+              />
+            </label>
+            <label className="block font-semibold">
+              完成状況
+              <select
+                className="field mt-2"
+                value={freeStatus}
+                onChange={(e) => {
+                  setFreeStatus(e.target.value);
+                  setSession({ ...session, freeStatus: e.target.value });
+                }}
+              >
+                <option>完成</option>
+                <option>一部完成</option>
+                <option>未完成</option>
+              </select>
+            </label>
+            <button className="btn btn-primary" onClick={finish}>
+              アレンジを終了して実験を終える
+            </button>
+          </div>
         </div>
       </Shell>
     );

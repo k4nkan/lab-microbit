@@ -74,6 +74,22 @@ mblog.plot_sensors(ds, ax)
 fig.tight_layout()
 fig.savefig(OUT / f"{ds.name}-sensors.png", dpi=150)
 
+# %% センシング: コードの閾値と実際のセンサー値
+# 実行（書き込み）ごとに、そのとき動いていたコードの閾値に、実際の値が届いたかを見る
+sensing = mblog.sensing_summary(ds)
+if not sensing.empty:
+    print(sensing.round(2).to_string(index=False))
+    detail = mblog.sensing_runs(ds)
+    cols = ["run_index", "step_id", "condition", "closest", "gap", "reached_ratio", "state", "changed"]
+    print(detail[cols].round(2).to_string(index=False))
+
+fig = mblog.plot_sensing(ds)
+fig.savefig(OUT / f"{ds.name}-sensing.png", dpi=150)
+for name, steps in {"tutorial": ["T8"], "game": ["G2", "G3"], "arrange": ["arrange"]}.items():
+    fig = mblog.plot_sensing(ds, steps=steps)
+    fig.savefig(OUT / f"{ds.name}-sensing-{name}.png", dpi=150)
+    plt.close(fig)
+
 # %% 任意の時点のコードを見る
 print(ds.code(int(ds.snapshots["snapshot_index"].iloc[-1])))
 
