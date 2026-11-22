@@ -6,7 +6,7 @@
 | --- | --- |
 | `build-dataset.py` | 研究DB → 実験ごとのデータセット（標準ライブラリのみ） |
 | `mblog.py` | データセットを pandas で読み込み、指標の計算と図の描画を行う |
-| `explore.py` | 探索用スクリプト。`# %%` セルごとに実行でき、図を `tools/out/` に保存 |
+| `explore.py` | 探索用スクリプト。`# %%` セルごとに実行でき、図を `tools/out/<データセット>/` に保存（センシングは `sensing/`） |
 | `block-analytics.py` / `sensor-analytics.py` | Edit Logger の Export CSV を直接読む簡易集計（`tools/logs/`） |
 
 ## 1. データセットを作る
@@ -23,7 +23,7 @@ python3 tools/build-dataset.py --all      # すべての実験
 
 ```bash
 make analysis-setup   # 初回のみ：tools/.venv に pandas / matplotlib / ipykernel を入れる
-make analysis         # explore.py を実行し、図を tools/out/ に保存
+make analysis         # explore.py を実行し、図を tools/out/<データセット>/ に保存
 ```
 
 VS Code では `tools/explore.py` の `# %%` ごとにセルとして実行できます（インタプリタに `tools/.venv` を選ぶ）。

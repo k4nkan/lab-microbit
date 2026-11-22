@@ -292,6 +292,11 @@ def sensing_runs(ds: Dataset, always_ratio: float = 0.8) -> pd.DataFrame:
     - gap: 一番条件に近づいた値と閾値の差。プラスなら超えた分、マイナスなら足りなかった分
     - changed: 直前の実行から新しく入った・数字が変わった条件か。changed かつ reached でなければ「直したところを試していない」（②）
     - state: 届かない / 届いた / ほぼ常に成立（reached_ratio が always_ratio 以上。置いたままでも成り立つ条件で、記号や向きの間違いが疑われる）
+    - both_sides: 成り立つ時と成り立たない時の両方があったか。「明るさ > 0」のように普段は成り立つのが正しい条件では、
+      ほぼ常に成立でも both_sides が True なら、成り立たない側（暗くする）も試している
+    - switches: 成り立つ / 成り立たないが切り替わった回数（値が数字をまたいだ回数）
+    - flipped: 直前の実行に、同じセンサー・同じ数字で不等号だけ逆の条件があったか（向きを直した）
+    - label: 成立率と切り替わり回数から付けるラベル（label_run を参照）
     """
     runs = ds.runs
     if runs.empty:
@@ -326,15 +331,152 @@ def sensing_runs(ds: Dataset, always_ratio: float = 0.8) -> pd.DataFrame:
                     "gap": gap,
                     "reached": bool(ok.any()) if len(values) else False,
                     "reached_ratio": float(ok.mean()) if len(values) else np.nan,
+                    "both_sides": bool(ok.any() and not ok.all()) if len(values) else False,
                     "changed": (c["sensor"], c["op"], c["value"]) not in previous,
+                    "switches": int((ok.astype(int).diff().abs() == 1).sum()) if len(values) else 0,
+                    "flipped": any(
+                        k[0] == c["sensor"] and k[2] == c["value"] and k[1] == _FLIP[c["op"]] for k in previous
+                    ),
                 }
             )
             r = rows[-1]
             r["state"] = (
                 "届かない" if not r["reached"] else "ほぼ常に成立" if r["reached_ratio"] >= always_ratio else "届いた"
             )
+            r["label"] = label_run(r)
         previous = keys
     return pd.DataFrame(rows)
+
+
+RUN_LABELS = {
+    "境目を試せた": "#2e8b57",
+    "試していない": "#b0b0b0",
+    "あと少し届かない": "#e08e0b",
+    "常に成立": "#c0392b",
+    "ほぼ成立（要確認）": "#8e44ad",
+}
+
+
+def label_run(r: dict, near: float = 0.2, mostly: float = 0.5) -> str:
+    """書き込み 1 回 × 条件 1 つに、成立率と切り替わり回数からラベルを付ける。
+
+    - 一度も成り立たない: 足りなかった分が数字の near 割以内なら「あと少し届かない」、それより遠ければ「試していない」
+    - ずっと成り立つ（切り替わり 0 回）: 「常に成立」（記号・向きの間違い、ありえない数字）
+    - 切り替わりあり、成立率が mostly 以上: 「ほぼ成立（要確認）」（向きの間違い、または普段は成り立つのが正しい条件）
+    - 切り替わりあり、成立率が mostly 未満: 「境目を試せた」
+    """
+    if not r["reached"]:
+        return "あと少し届かない" if r["gap"] >= -near * max(abs(r["value"]), 100) else "試していない"
+    if r["switches"] == 0:
+        return "常に成立"
+    return "ほぼ成立（要確認）" if r["reached_ratio"] >= mostly else "境目を試せた"
+
+
+def plot_run_labels(ds: Dataset, changed_only: bool = False):
+    """書き込み 1 回 × 条件 1 つを 1 点として、横軸に成立率、縦軸に切り替わり回数をとり、ラベルで色分けする。
+    塗りつぶしは数字を変えた（新しく入った）条件、白抜きは前の書き込みから変わっていない条件。"""
+    sr = sensing_runs(ds)
+    if changed_only:
+        sr = sr[sr["changed"]]
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    rng = np.random.default_rng(0)
+    for label, color in RUN_LABELS.items():
+        part = sr[sr["label"] == label]
+        if part.empty:
+            continue
+        flat = (part["switches"] == 0).to_numpy()  # 切り替わり 0 回の点は重なるので左右にもずらす
+        x = part["reached_ratio"] * 100 + np.where(flat, rng.uniform(-2.5, 2.5, len(part)), 0)
+        y = part["switches"] + rng.uniform(-0.25, 0.25, len(part))
+        ch = part["changed"].to_numpy()
+        ax.scatter(x[ch], y[ch], s=46, color=color, label=f"{label}（{len(part)}）", zorder=3)
+        ax.scatter(x[~ch], y[~ch], s=46, facecolors="white", edgecolors=color, lw=1.4, zorder=3)
+    ax.set_xlabel("成立率（動かしていた時間のうち、条件が成り立っていた割合 %）")
+    ax.set_ylabel("切り替わり回数（成り立つ ⇄ 成り立たない）")
+    ax.set_xlim(-4, 104)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=9, frameon=False, loc="upper right")
+    fig.tight_layout()
+    return fig
+
+
+_SHORT = {
+    "accelerationX": "x",
+    "accelerationY": "y",
+    "accelerationZ": "z",
+    "acceleration_magnitude": "強さ",
+    "lightLevel": "明るさ",
+    "soundLevel": "音",
+}
+
+
+def focus_runs(ds: Dataset) -> pd.DataFrame:
+    """書き込みごとに「今いじっている条件」だけを残す。
+
+    その書き込みで新しく入った・数字や向きが変わった条件があればそれ。なければ（同じコードを書き込み直したときなど）、
+    同じステップの中で直前にいじった条件のうち、まだコードに残っているものを引き継ぐ。ステップが変わったら引き継がない。
+    """
+    sr = sensing_runs(ds)
+    if sr.empty:
+        return sr
+    rows, focus, step = [], set(), None
+    for run_index, part in sr.groupby("run_index", sort=False):
+        keys = set(zip(part["sensor"], part["op"], part["value"]))
+        changed = set(zip(*[part.loc[part["changed"], c] for c in ("sensor", "op", "value")]))
+        if part["step_id"].iloc[0] != step:
+            focus, step = set(), part["step_id"].iloc[0]
+        focus = changed or (focus & keys)
+        rows.append(part[[k in focus for k in zip(part["sensor"], part["op"], part["value"])]])
+    return pd.concat(rows, ignore_index=True)
+
+
+def plot_focus_sequence(ds: Dataset):
+    """ステップごとに、書き込み順に「今いじっている条件」のラベルを色で並べる。
+    1 マスが書き込み 1 回。いじっている条件が複数あるときはマスを縦に分ける。"""
+    fr = focus_runs(ds)
+    sr = sensing_runs(ds)
+    steps = list(dict.fromkeys(sr["step_id"]))
+    width = max(sr.groupby("step_id")["run_index"].nunique())
+    fig, ax = plt.subplots(figsize=(1.25 * width + 2.5, 0.95 * len(steps) + 1.2))
+    for row, step in enumerate(steps):
+        for col, run_index in enumerate(dict.fromkeys(sr.loc[sr["step_id"] == step, "run_index"])):
+            run = fr[fr["run_index"] == run_index]
+            n = len(run)
+            if n == 0:
+                ax.add_patch(plt.Rectangle((col + 0.05, row + 0.1), 0.9, 0.78, fill=False, ec="0.75", lw=1, ls="--"))
+                ax.text(col + 0.5, row + 0.5, "条件の変更なし", ha="center", va="center", fontsize=8, color="0.5")
+            for k, (_, r) in enumerate(run.iterrows()):
+                y0 = row + 0.1 + k * 0.8 / n
+                ax.add_patch(plt.Rectangle((col + 0.05, y0), 0.9, 0.8 / n - 0.02, color=RUN_LABELS[r["label"]], lw=0))
+                ax.text(
+                    col + 0.5,
+                    y0 + 0.4 / n,
+                    f"{_SHORT.get(r['sensor'], r['sensor'])} {r['op']} {r['value']:g}",
+                    ha="center",
+                    va="center",
+                    fontsize=8 if n < 3 else 6.5,
+                    color="white",
+                )
+    ax.set_xlim(0, width)
+    ax.set_ylim(len(steps), 0)
+    ax.set_yticks([i + 0.5 for i in range(len(steps))], [STEP_LABELS.get(s, s) for s in steps])
+    ax.set_xticks([i + 0.5 for i in range(width)], [f"{i + 1} 回目" for i in range(width)], fontsize=8)
+    ax.tick_params(length=0)
+    ax.spines[:].set_visible(False)
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in RUN_LABELS.values()]
+    ax.legend(
+        handles,
+        list(RUN_LABELS),
+        ncol=len(RUN_LABELS),
+        fontsize=8,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+    )
+    ax.set_xlabel(
+        "ステップ内の書き込み（いじった条件だけ。同じコードの書き込み直しは、直前にいじった条件を引き継ぐ）", fontsize=8
+    )
+    fig.tight_layout()
+    return fig
 
 
 def sensing_summary(ds: Dataset) -> pd.DataFrame:
@@ -392,6 +534,119 @@ def plot_sensing(ds: Dataset, steps: list[str] | None = None, sensors: list[str]
         "経過時間（分）　縦線: 起動（書き込み）／横線: コードの閾値（赤: >、青: <、点線: 届かなかった）"
     )
     fig.tight_layout()
+    return fig
+
+
+def plot_scene(
+    ds: Dataset,
+    start_min: float,
+    end_min: float,
+    sensors: list[str],
+    title: str | None = None,
+    annotate: list[tuple[str, str, float]] | None = None,
+    text: bool = True,
+):
+    """ある場面（時間の区間）を切り出して、プログラムの変化とセンサー値を重ねて描く。
+
+    - 点: センサー値。そのとき動いていたコードの条件を満たした点は色付き
+    - 灰色の細線: 書き込まずに書き換えただけの閾値（エディター上の変化）
+    - 色付きの太線: 書き込んで動いていた閾値（赤: >、青: <、点線: 届かなかった）とその状態
+    - 縦線: 起動（書き込み）、下の短い線: コード変更
+    annotate に (センサー, 記号, 数字) を渡すと、その条件だけに説明を付ける（条件が多いとき用）。
+    text=False なら、軸ラベル以外の文字（タイトル・ステップ名・数字の説明・凡例）を描かない。
+    """
+    s = ds.sensors
+    s = s[(s["t_min"] >= start_min) & (s["t_min"] <= end_min)]
+    sr = sensing_runs(ds)
+    sr = sr[(sr["t_min"] >= start_min - 5) & (sr["t_min"] <= end_min)] if not sr.empty else sr
+    runs = ds.runs[(ds.runs["t_min"] >= start_min) & (ds.runs["t_min"] <= end_min)]
+    snaps = ds.snapshots.dropna(subset=["code_file"]).assign(t_min=lambda d: d["t_sec"] / 60)
+    snaps = snaps[snaps["t_min"] <= end_min].sort_values("t_min")
+    edits = []
+    for i, (_, row) in enumerate(snaps.iterrows()):
+        stop = snaps["t_min"].iloc[i + 1] if i + 1 < len(snaps) else end_min
+        if stop < start_min:
+            continue
+        conds = thresholds((ds.path / row["code_file"]).read_text(encoding="utf-8"))
+        edits.append((max(row["t_min"], start_min), min(stop, end_min), conds))
+
+    fig, axes = plt.subplots(len(sensors), 1, figsize=(11, 2.6 * len(sensors) + 1.2), sharex=True)
+    axes = np.atleast_1d(axes)
+    for i, (ax, col) in enumerate(zip(axes, sensors)):
+        _bands(ax, ds, label=False)
+        if text and i == 0:
+            for _, band in ds.step_bands.iterrows():
+                a, b = max(band["start_min"], start_min), min(band["end_min"], end_min)
+                if b - a > (end_min - start_min) * 0.08:
+                    ax.text(
+                        a,
+                        1.01,
+                        STEP_LABELS.get(band["step_id"], band["step_id"]),
+                        fontsize=8,
+                        color="0.35",
+                        transform=ax.get_xaxis_transform(),
+                        va="bottom",
+                    )
+        for t in runs["t_min"]:
+            ax.axvline(t, color="0.6", lw=0.8, zorder=1)
+        for a, b, conds in edits:
+            for c in conds:
+                if c["sensor"] == col:
+                    light = "#e6a39b" if c["op"] in (">", ">=") else "#9dbbe0"
+                    ax.hlines(c["value"], a, b, colors=light, lw=1.2, zorder=2)
+        ax.scatter(s["t_min"], s[col], s=4, color="0.55", lw=0, zorder=3)
+        for _, r in sr[sr["sensor"] == col].iterrows():
+            a = max(r["t_min"], start_min)
+            b = min(r["t_min"] + r["tried_sec"] / 60, end_min)
+            if b <= a:
+                continue
+            color = "#c0392b" if r["op"] in (">", ">=") else "#2c6fbb"
+            part = s[(s["t_min"] >= a) & (s["t_min"] <= b)]
+            hit = part[_satisfies(part[col], r["op"], r["value"])]
+            ax.scatter(hit["t_min"], hit[col], s=7, color=color, lw=0, zorder=4)
+            ax.hlines(r["value"], a, b, colors=color, lw=2, ls="-" if r["reached"] else ":", zorder=5)
+            notable = r["changed"] or r["state"] != "届いた" or r["reached_ratio"] >= 0.5
+            picked = annotate is None or (col, r["op"], r["value"]) in annotate
+            if text and notable and picked:
+                note = f"{r['op']} {r['value']:g}"
+                if r["state"] == "届かない":
+                    note += f"\n届かない（{'最大' if r['op'] in ('>', '>=') else '最小'} {r['closest']:g}）"
+                elif r["reached_ratio"] >= 0.5:
+                    note += f"\n成立 {r['reached_ratio']:.0%}"
+                ax.annotate(
+                    note,
+                    (a, r["value"]),
+                    xytext=(2, 3),
+                    textcoords="offset points",
+                    fontsize=8,
+                    color=color,
+                    zorder=6,
+                    bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.8),
+                )
+        levels = [c["value"] for _, _, conds in edits for c in conds if c["sensor"] == col]
+        lo, hi = min([s[col].min(), *levels]), max([s[col].max(), *levels])
+        pad = (hi - lo) * 0.18 or 1
+        ax.set_ylim(lo - pad, hi + pad)
+        ax.set_ylabel(SENSOR_LABELS[col], fontsize=9)
+        ax.spines[["top", "right"]].set_visible(False)
+    change_t = [a for a, _, _ in edits if a > start_min]
+    axes[-1].plot(change_t, [0] * len(change_t), "|", color="0.3", ms=8, transform=axes[-1].get_xaxis_transform())
+    axes[-1].set_xlim(start_min, end_min)
+    axes[-1].set_xlabel("経過時間（分）")
+    if not text:
+        fig.tight_layout()
+        return fig
+    if title:
+        axes[0].set_title(title, fontsize=11, loc="left", pad=14)
+    fig.tight_layout(rect=(0, 0.5 / (2.6 * len(sensors) + 1.2), 1, 1))
+    fig.text(
+        0.01,
+        0.01,
+        "縦線: 書き込み　濃い線: 動いていた数字（赤: >、青: <、点線: 届かない）　薄い線: 書き込まずに書き換えた数字\n"
+        "色付きの点: 条件を満たした値　灰色の点: 満たしていない値　下の短い線: コード変更",
+        fontsize=8,
+        color="0.3",
+    )
     return fig
 
 

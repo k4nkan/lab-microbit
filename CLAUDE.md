@@ -23,7 +23,7 @@ micro:bit / MakeCode を使った学習実験の研究リポジトリ。実験�
 | `microbit-edit-logger/` | MakeCode 拡張（submodule、公開用）。コード変更・センサー値・boot を記録 |
 | `microbit-edit-logger-local/` | ローカル MakeCode の起動・検証用 |
 | `microbit-research-website/` | 問題サイト（React/Vite）と API（FastAPI）。教材は `frontend/src/tasks.ts` |
-| `tools/` | データセット作成（`build-dataset.py`）と分析（`mblog.py` がローダー、`explore.py` が探索用）。図は `tools/out/` |
+| `tools/` | データセット作成（`build-dataset.py`）と分析（`mblog.py` がローダー、`explore.py` が探索用）。図は `tools/out/<データセット>/` |
 | `docs/` | 利用者向けドキュメント。README は入口だけにして、詳細はここに書く |
 | `research/` | 研究ノート（Obsidian vault）。進捗・ゼミ・判断・論文・発表構成 |
 
@@ -33,7 +33,7 @@ micro:bit / MakeCode を使った学習実験の研究リポジトリ。実験�
 make setup        # 依存関係のインストール
 make experiment   # MakeCode・ロガー・問題サイト・API をまとめて起動
 make dataset      # 全実験のデータセットを作り直す
-make analysis     # explore.py を実行して図を tools/out/ に保存
+make analysis     # explore.py を実行して図を tools/out/<データセット>/ に保存
 make build        # 拡張のビルド確認
 make stop         # port 競合時にローカル server を止める
 make format       # TypeScript（Prettier）と Python（ruff）を整形
