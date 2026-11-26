@@ -678,7 +678,7 @@ export default function App() {
                 <tr>
                   <th className="py-2 pr-4">センサー</th>
                   <th className="py-2 pr-4">ブロック</th>
-                  <th className="py-2 pr-4">値の範囲</th>
+                  <th className="py-2 pr-4">値の目安</th>
                   <th className="py-2">使いみち</th>
                 </tr>
               </thead>
